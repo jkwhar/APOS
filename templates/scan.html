@@ -19,7 +19,7 @@
     if (e.key === 'Enter') {
       const code = e.target.value;
       if (code) {
-        window.location = '/scan/result?barcode=' + encodeURIComponent(code);
+        window.location = '/find?barcode=' + encodeURIComponent(code);
       }
     }
   });
@@ -27,3 +27,38 @@
 
 </body>
 </html>
+{% extends "base.html" %}
+{% block title %}Scan a Part — APOS Inventory{% endblock %}
+
+{% block content %}
+
+<h2 class="mb-4">Scan a Part</h2>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+
+        <p class="text-muted">Scan a barcode using a USB scanner or type it manually and press Enter.</p>
+
+        <input id="scanbox"
+               class="form-control form-control-lg"
+               autofocus
+               placeholder="Scan barcode here">
+
+    </div>
+</div>
+
+<script>
+  const input = document.getElementById('scanbox');
+  input.focus();
+
+  input.addEventListener('keypress', function (e) {
+    if (e.key === 'Enter') {
+      const code = e.target.value.trim();
+      if (code) {
+        window.location = '/scan/result?barcode=' + encodeURIComponent(code);
+      }
+    }
+  });
+</script>
+
+{% endblock %}

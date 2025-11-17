@@ -1,87 +1,128 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Bulk Add Parts</title>
-</head>
-<body>
+{% extends "base.html" %}
+{% block title %}Bulk Add Parts — APOS Inventory{% endblock %}
 
-<h1>Bulk Add Parts (5 rows)</h1>
+{% block content %}
 
-<p><a href="/">Back to Home</a></p>
+<!-- adds toggle for single or bulk add -->
 
-<form action="/add/bulk" method="post">
+<h2 class="mb-4 fw-bold text-primary">📦 Bulk Add Parts (5 Rows)</h2>
 
-<p>
-    Global Category:
-    <select id="global_category">
-        <option value="">-- None --</option>
-        {% for cat in categories %}
-        <option value="{{ cat.name }}">{{ cat.name }}</option>
-        {% endfor %}
-    </select>
-    <button type="button" onclick="applyCategoryToAll()">Apply to All Rows</button>
-</p>
+<div class="mb-3">
+    <a href="/add" class="btn btn-outline-secondary btn-sm">
+        ➕ Switch to Single Add
+    </a>
+</div>
 
-<p>
-    Global Store:
-    <select id="global_store">
-        <option value="">-- None --</option>
-        {% for s in stores %}
-        <option value="{{ s.name }}">{{ s.name }}</option>
-        {% endfor %}
-    </select>
-    <button type="button" onclick="applyStoreToAll()">Apply to All Rows</button>
-</p>
+<div class="card shadow-sm">
+    <div class="card-body">
 
-<table border="1" cellpadding="5" cellspacing="0">
-    <tr>
-        <th>Part Number</th>
-        <th>Category</th>
-        <th>Store</th>
-        <th>Description</th>
-        <th>Price</th>
-        <th>Quantity</th>
-        <th>Barcode</th>
-        <th>Bin Code</th>
-    </tr>
+        <form action="/add/bulk" method="post" class="row g-3">
 
-    {% for r in rows %}
-    <tr>
-        <td><input type="text" name="part_number"
-           onblur="autoFillFromPartNumber(this)"></td>
+            <!-- Global Controls -->
+            <div class="col-12">
+                <label class="form-label fw-bold">Global Category</label>
+                <div class="input-group mb-3">
+                    <select id="global_category" class="form-select">
+                        <option value="">-- None --</option>
+                        {% for cat in categories %}
+                        <option value="{{ cat.name }}">{{ cat.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="button" class="btn btn-outline-primary"
+                            onclick="applyCategoryToAll()">Apply to All</button>
+                </div>
+            </div>
 
-        <td>
-            <select name="category" class="row_category">
-                <option value="">-- None --</option>
-                {% for cat in categories %}
-                <option value="{{ cat.name }}">{{ cat.name }}</option>
-                {% endfor %}
-            </select>
-        </td>
+            <div class="col-12">
+                <label class="form-label fw-bold">Global Store</label>
+                <div class="input-group mb-3">
+                    <select id="global_store" class="form-select">
+                        <option value="">-- None --</option>
+                        {% for s in stores %}
+                        <option value="{{ s.name }}">{{ s.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="button" class="btn btn-outline-primary"
+                            onclick="applyStoreToAll()">Apply to All</button>
+                </div>
+            </div>
 
-        <td>
-            <select name="store" class="row_store">
-                <option value="">-- None --</option>
-                {% for s in stores %}
-                <option value="{{ s.name }}">{{ s.name }}</option>
-                {% endfor %}
-            </select>
-        </td>
+            <!-- Table -->
+            <div class="col-12 table-responsive">
+                <table class="table table-bordered table-striped align-middle text-center">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Part Number</th>
+                            <th>Category</th>
+                            <th>Store</th>
+                            <th>Description</th>
+                            <th>Price</th>
+                            <th>Qty</th>
+                            <th>Barcode</th>
+                            <th>Bin Code</th>
+                        </tr>
+                    </thead>
 
-        <td><input type="text" name="description"></td>
-        <td><input type="number" step="0.01" name="price"></td>
-        <td><input type="number" name="quantity" value="0"></td>
-        <td><input type="text" name="barcode"></td>
-        <td><input type="text" name="bin_code"></td>
-    </tr>
-    {% endfor %}
-</table>
+                    <tbody>
+                    {% for r in rows %}
+                        <tr>
+                            <td>
+                                <input type="text" name="part_number"
+                                       class="form-control"
+                                       onblur="autoFillFromPartNumber(this)">
+                            </td>
 
-<br>
-<button type="submit">Add All Parts</button>
+                            <td>
+                                <select name="category" class="form-select row_category">
+                                    <option value="">-- None --</option>
+                                    {% for cat in categories %}
+                                    <option value="{{ cat.name }}">{{ cat.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </td>
 
-</form>
+                            <td>
+                                <select name="store" class="form-select row_store">
+                                    <option value="">-- None --</option>
+                                    {% for s in stores %}
+                                    <option value="{{ s.name }}">{{ s.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+
+                            <td>
+                                <input type="text" name="description" class="form-control">
+                            </td>
+
+                            <td>
+                                <input type="number" step="0.01" name="price" class="form-control">
+                            </td>
+
+                            <td>
+                                <input type="number" name="quantity" value="0" class="form-control">
+                            </td>
+
+                            <td>
+                                <input type="text" name="barcode" class="form-control">
+                            </td>
+
+                            <td>
+                                <input type="text" name="bin_code" class="form-control">
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="col-12 text-end">
+                <button type="submit" class="btn btn-primary btn-lg">Add All Parts</button>
+            </div>
+
+        </form>
+
+    </div>
+</div>
 
 <script>
 function applyCategoryToAll() {
@@ -92,9 +133,8 @@ function applyStoreToAll() {
     const value = document.getElementById('global_store').value;
     document.querySelectorAll('.row_store').forEach(x => x.value = value);
 }
-
 </script>
+
 <script src="/static/autofill.js"></script>
 
-</body>
-</html>
+{% endblock %}

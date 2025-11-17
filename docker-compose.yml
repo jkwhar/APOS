@@ -1,0 +1,11 @@
+version: "3.9"
+
+services:
+  parts_inventory:
+    build: .
+    container_name: parts_inventory
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data    # keep your SQLite DB on the host

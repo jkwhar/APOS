@@ -1,19 +1,13 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Component Inventory</title>
-</head>
-<body>
+{% extends "base.html" %}
 
-<h1>Component Inventory System</h1>
+{% block title %}Home — APOS Inventory{% endblock %}
 
-<p><a href="/scan">Scan Item</a></p>
-<p><a href="/add">Add New Part</a></p>
-<p><a href="/add/bulk">Bulk Add Parts</a></p>
-<p><a href="/parts">View Parts List</a></p>
-<p><a href="/search">Search</a></p>
-<p><a href="/settings">Settings</a></p>
+{% block content %}
+<section class="text-center py-5">
+    <h1 class="display-4 mb-3">Welcome to the APOS Inventory System</h1>
+    <p class="lead mb-4">Quickly add, track, and manage your electronic components with ease.</p>
 
-</body>
-</html>
+    <a href="{{ url_for('parts_list') }}" class="btn btn-lg btn-primary">View Parts</a>
+    <a href="{{ url_for('add_part') }}" class="btn btn-lg btn-outline-primary ms-2">Add New Part</a>
+</section>
+{% endblock %}

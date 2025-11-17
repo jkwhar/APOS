@@ -6,6 +6,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlmodel import SQLModel, Field, Session, create_engine, select
 from starlette.status import HTTP_303_SEE_OTHER
+from datetime import datetime
 
 # ============================================================
 # DATABASE SETUP
@@ -58,8 +59,54 @@ class Store(SQLModel, table=True):
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
+#Find page
 
+@app.get("/find", response_class=HTMLResponse)
+def find_parts(request: Request, query: str | None = None, barcode: str | None = None):
 
+    search_value = query or barcode or ""
+
+    if not search_value:
+        return templates.TemplateResponse("find.html",
+                                          {"request": request, "parts": [], "search_value": ""})
+
+    with Session(engine) as session:
+        stmt = select(Part).where(
+            (Part.part_number.ilike(f"%{search_value}%")) |
+            (Part.description.ilike(f"%{search_value}%")) |
+            (Part.category.ilike(f"%{search_value}%")) |
+            (Part.store.ilike(f"%{search_value}%")) |
+            (Part.barcode.ilike(f"%{search_value}%")) |
+            (Part.bin_code.ilike(f"%{search_value}%"))
+        )
+        parts = session.exec(stmt).all()
+
+    return templates.TemplateResponse("find.html",
+                                      {"request": request, "parts": parts, "search_value": search_value})
+
+# consume route
+
+@app.post("/find/use/{part_id}")
+def use_one_part(part_id: int, request: Request):
+
+    referer = request.headers.get("referer", "/find")
+
+    with Session(engine) as session:
+        part = session.get(Part, part_id)
+
+        if not part:
+            return RedirectResponse(referer, status_code=303)
+
+        if part.quantity > 0:
+            part.quantity -= 1
+
+            log_line = f"Used 1 on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            part.notes = (part.notes + "\n" if part.notes else "") + log_line
+
+            session.add(part)
+            session.commit()
+
+    return RedirectResponse(referer, status_code=303)
 # ============================================================
 # PARTS LIST
 # ============================================================

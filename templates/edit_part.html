@@ -1,56 +1,80 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="UTF-8">
-    <title>Edit Part</title>
+  <meta charset="UTF-8">
+  <title>Edit Part</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
-<body>
+<body class="bg-light py-4">
+<div class="container mt-5">
 
-<h1>Edit Part #{{ part.id }}</h1>
+  <div class="card shadow-lg border-0">
+    <div class="card-body bg-white p-4">
 
-<p><a href="/parts">Back to Parts List</a></p>
+      <h2 class="mb-4 fw-bold text-primary">Edit Part #{{ part.id }}</h2>
 
-<form action="/part/{{ part.id }}/edit" method="post">
+      <a href="/parts" class="btn btn-outline-secondary btn-sm mb-3">⬅ Back</a>
 
-    <label>Part Number:</label><br>
-    <input type="text" name="part_number" value="{{ part.part_number }}" required><br><br>
+      <form action="/part/{{ part.id }}/edit" method="post" class="row g-3">
 
-    <label>Category:</label><br>
-    <select name="category">
-        <option value="">-- None --</option>
-        {% for cat in categories %}
-        <option value="{{ cat.name }}" {% if cat.name == part.category %}selected{% endif %}>{{ cat.name }}</option>
-        {% endfor %}
-    </select><br><br>
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">Part Number</label>
+          <input type="text" class="form-control" name="part_number" value="{{ part.part_number }}" required>
+        </div>
 
-    <label>Store:</label><br>
-    <select name="store">
-        <option value="">-- None --</option>
-        {% for s in stores %}
-        <option value="{{ s.name }}" {% if s.name == part.store %}selected{% endif %}>{{ s.name }}</option>
-        {% endfor %}
-    </select><br><br>
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">Category</label>
+          <select name="category" class="form-select">
+            <option value="">-- None --</option>
+            {% for cat in categories %}
+            <option value="{{ cat.name }}" {% if cat.name == part.category %}selected{% endif %}>{{ cat.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
 
-    <label>Description:</label><br>
-    <input type="text" name="description" value="{{ part.description }}"><br><br>
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">Store</label>
+          <select name="store" class="form-select">
+            <option value="">-- None --</option>
+            {% for s in stores %}
+            <option value="{{ s.name }}" {% if s.name == part.store %}selected{% endif %}>{{ s.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
 
-    <label>Price (USD):</label><br>
-    <input type="number" step="0.01" name="price" value="{{ part.price }}"><br><br>
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">Price (USD)</label>
+          <input type="number" step="0.01" class="form-control" name="price" value="{{ part.price }}">
+        </div>
 
-    <label>Quantity:</label><br>
-    <input type="number" name="quantity" value="{{ part.quantity }}"><br><br>
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">Quantity</label>
+          <input type="number" class="form-control" name="quantity" value="{{ part.quantity }}">
+        </div>
 
-    <label>Barcode:</label><br>
-    <input type="text" name="barcode" value="{{ part.barcode }}"><br><br>
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">Barcode</label>
+          <input type="text" class="form-control" name="barcode" value="{{ part.barcode }}">
+        </div>
 
-    <label>Bin Code:</label><br>
-    <input type="text" name="bin_code" value="{{ part.bin_code }}"><br><br>
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">Bin Code</label>
+          <input type="text" class="form-control" name="bin_code" value="{{ part.bin_code }}">
+        </div>
 
-    <label>Project Used:</label><br>
-    <textarea name="notes" rows="5" cols="40">{{ part.notes }}</textarea><br><br>
+        <div class="col-md-12">
+          <label class="form-label fw-semibold">Project Used / Notes</label>
+          <textarea name="notes" rows="4" class="form-control">{{ part.notes }}</textarea>
+        </div>
 
-    <button type="submit">Save Changes</button>
-</form>
+        <div class="col-12 text-end">
+          <button type="submit" class="btn btn-success btn-lg px-5 mt-3">💾 Save Changes</button>
+        </div>
 
+      </form>
+    </div>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

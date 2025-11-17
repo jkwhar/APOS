@@ -1,90 +1,122 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Settings</title>
-</head>
-<body>
+{% extends "base.html" %}
+{% block title %}Settings — APOS Inventory{% endblock %}
 
-<h1>Settings</h1>
+{% block content %}
 
-<p><a href="/">Back to Home</a></p>
+<h2 class="mb-4">Settings</h2>
 
-<h2>Categories</h2>
+<!-- ===================== CATEGORIES ===================== -->
 
-<form action="/settings/category/add" method="post">
-    <input type="text" name="name" placeholder="New category name" required>
-    <button type="submit">Add Category</button>
-</form>
+<div class="card mb-5 shadow-sm">
+    <div class="card-header bg-primary text-white">
+        <h4 class="mb-0">Categories</h4>
+    </div>
+    <div class="card-body">
 
-{% if categories %}
-<table border="1" cellpadding="4" cellspacing="0">
-    <tr>
-        <th>ID</th>
-        <th>Name</th>
-        <th>Actions</th>
-    </tr>
-    {% for cat in categories %}
-    <tr>
-        <td>{{ cat.id }}</td>
-        <td>
-            <form action="/settings/category/edit" method="post" style="display:inline;">
-                <input type="hidden" name="cat_id" value="{{ cat.id }}">
-                <input type="text" name="name" value="{{ cat.name }}">
-                <button type="submit">Save</button>
-            </form>
-        </td>
-        <td>
-            <form action="/settings/category/delete" method="post" style="display:inline;" onsubmit="return confirm('Delete this category?');">
-                <input type="hidden" name="cat_id" value="{{ cat.id }}">
-                <button type="submit">Delete</button>
-            </form>
-        </td>
-    </tr>
-    {% endfor %}
-</table>
-{% else %}
-<p>No categories yet.</p>
-{% endif %}
+        <form action="/settings/category/add" method="post" class="row g-3 mb-4">
+            <div class="col-md-8">
+                <input type="text" name="name" class="form-control" placeholder="New category name" required>
+            </div>
+            <div class="col-md-4 text-end">
+                <button type="submit" class="btn btn-success">Add Category</button>
+            </div>
+        </form>
 
-<hr>
+        {% if categories %}
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th style="width: 180px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for cat in categories %}
+                    <tr>
+                        <td>{{ cat.id }}</td>
+                        <td>
+                            <form action="/settings/category/edit" method="post" class="d-flex">
+                                <input type="hidden" name="cat_id" value="{{ cat.id }}">
+                                <input type="text" name="name" value="{{ cat.name }}" class="form-control me-2">
+                                <button type="submit" class="btn btn-warning btn-sm">Save</button>
+                            </form>
+                        </td>
+                        <td>
+                            <form action="/settings/category/delete" method="post" class="d-inline"
+                                  onsubmit="return confirm('Delete this category?');">
+                                <input type="hidden" name="cat_id" value="{{ cat.id }}">
+                                <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+            <p class="text-muted">No categories yet.</p>
+        {% endif %}
 
-<h2>Stores</h2>
+    </div>
+</div>
 
-<form action="/settings/store/add" method="post">
-    <input type="text" name="name" placeholder="New store name" required>
-    <button type="submit">Add Store</button>
-</form>
+<!-- ===================== STORES ===================== -->
 
-{% if stores %}
-<table border="1" cellpadding="4" cellspacing="0">
-    <tr>
-        <th>ID</th>
-        <th>Name</th>
-        <th>Actions</th>
-    </tr>
-    {% for s in stores %}
-    <tr>
-        <td>{{ s.id }}</td>
-        <td>
-            <form action="/settings/store/edit" method="post" style="display:inline;">
-                <input type="hidden" name="store_id" value="{{ s.id }}">
-                <input type="text" name="name" value="{{ s.name }}">
-                <button type="submit">Save</button>
-            </form>
-        </td>
-        <td>
-            <form action="/settings/store/delete" method="post" style="display:inline;" onsubmit="return confirm('Delete this store?');">
-                <input type="hidden" name="store_id" value="{{ s.id }}">
-                <button type="submit">Delete</button>
-            </form>
-        </td>
-    </tr>
-    {% endfor %}
-</table>
-{% else %}
-<p>No stores yet.</p>
-{% endif %}
+<div class="card shadow-sm">
+    <div class="card-header bg-secondary text-white">
+        <h4 class="mb-0">Stores</h4>
+    </div>
+    <div class="card-body">
 
-</body>
-</html>
+        <form action="/settings/store/add" method="post" class="row g-3 mb-4">
+            <div class="col-md-8">
+                <input type="text" name="name" class="form-control" placeholder="New store name" required>
+            </div>
+            <div class="col-md-4 text-end">
+                <button type="submit" class="btn btn-success">Add Store</button>
+            </div>
+        </form>
+
+        {% if stores %}
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th style="width: 180px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for s in stores %}
+                    <tr>
+                        <td>{{ s.id }}</td>
+                        <td>
+                            <form action="/settings/store/edit" method="post" class="d-flex">
+                                <input type="hidden" name="store_id" value="{{ s.id }}">
+                                <input type="text" name="name" value="{{ s.name }}" class="form-control me-2">
+                                <button type="submit" class="btn btn-warning btn-sm">Save</button>
+                            </form>
+                        </td>
+                        <td>
+                            <form action="/settings/store/delete" method="post" class="d-inline"
+                                  onsubmit="return confirm('Delete this store?');">
+                                <input type="hidden" name="store_id" value="{{ s.id }}">
+                                <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+            <p class="text-muted">No stores yet.</p>
+        {% endif %}
+
+    </div>
+</div>
+
+{% endblock %}
