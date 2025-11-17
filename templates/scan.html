@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Scan Barcode</title>
+</head>
+<body>
+<h1>Scan a Part</h1>
+
+<p><a href="/">Back to Home</a></p>
+
+<input id="scanbox" autofocus placeholder="Scan barcode here">
+
+<script>
+  const input = document.getElementById('scanbox');
+  input.focus();
+
+  input.addEventListener('keypress', function (e) {
+    if (e.key === 'Enter') {
+      const code = e.target.value;
+      if (code) {
+        window.location = '/scan/result?barcode=' + encodeURIComponent(code);
+      }
+    }
+  });
+</script>
+
+</body>
+</html>

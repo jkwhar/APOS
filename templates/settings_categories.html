@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Category Settings</title>
+</head>
+<body>
+
+<h1>Category Settings</h1>
+
+<p><a href="/">Back to Home</a></p>
+
+<h2>Add Category</h2>
+<form action="/settings/categories/add" method="post">
+    <input type="text" name="name" placeholder="New category name" required>
+    <button type="submit">Add</button>
+</form>
+
+<h2>Existing Categories</h2>
+
+{% if categories %}
+<table border="1" cellpadding="4" cellspacing="0">
+    <tr>
+        <th>ID</th>
+        <th>Name</th>
+        <th>Edit</th>
+        <th>Delete</th>
+    </tr>
+    {% for cat in categories %}
+    <tr>
+        <td>{{ cat.id }}</td>
+        <td>
+            <form action="/settings/categories/edit" method="post" style="display:inline;">
+                <input type="hidden" name="cat_id" value="{{ cat.id }}">
+                <input type="text" name="name" value="{{ cat.name }}">
+                <button type="submit">Save</button>
+            </form>
+        </td>
+        <td></td>
+        <td>
+            <form action="/settings/categories/delete" method="post" style="display:inline;" onsubmit="return confirm('Delete this category?');">
+                <input type="hidden" name="cat_id" value="{{ cat.id }}">
+                <button type="submit">Delete</button>
+            </form>
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+{% else %}
+<p>No categories defined yet.</p>
+{% endif %}
+
+</body>
+</html>

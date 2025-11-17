@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Search Parts</title>
+</head>
+<body>
+
+<h1>Search Parts</h1>
+
+<p><a href="/">Back to Home</a></p>
+
+<form method="get" action="/search">
+    <input type="text" name="q" value="{{ q }}" placeholder="Search term (e.g. 32, esp32, resistor)">
+    <button type="submit">Search</button>
+</form>
+
+{% if q %}
+<h2>Results for "{{ q }}"</h2>
+
+{% if results %}
+<table border="1" cellpadding="4" cellspacing="0">
+    <tr>
+        <th>ID</th>
+        <th>Part Number</th>
+        <th>Category</th>
+        <th>Store</th>
+        <th>Description</th>
+        <th>Price</th>
+        <th>Quantity</th>
+        <th>Barcode</th>
+        <th>Bin</th>
+        <th>Project Used</th>
+        <th>Actions</th>
+    </tr>
+    {% for part in results %}
+    <tr>
+        <td>{{ part.id }}</td>
+        <td>{{ part.part_number }}</td>
+        <td>{{ part.category }}</td>
+        <td>{{ part.store }}</td>
+        <td>{{ part.description }}</td>
+        <td>${{ "%.2f"|format(part.price or 0) }}</td>
+        <td>{{ part.quantity }}</td>
+        <td>{{ part.barcode }}</td>
+        <td>{{ part.bin_code }}</td>
+        <td><a href="/part/{{ part.id }}/history">View</a></td>
+        <td>
+            <a href="/part/{{ part.id }}/edit">Edit</a>
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+{% else %}
+<p>No matches found.</p>
+{% endif %}
+
+{% endif %}
+
+</body>
+</html>

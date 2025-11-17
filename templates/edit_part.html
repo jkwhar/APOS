@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Edit Part</title>
+</head>
+<body>
+
+<h1>Edit Part #{{ part.id }}</h1>
+
+<p><a href="/parts">Back to Parts List</a></p>
+
+<form action="/part/{{ part.id }}/edit" method="post">
+
+    <label>Part Number:</label><br>
+    <input type="text" name="part_number" value="{{ part.part_number }}" required><br><br>
+
+    <label>Category:</label><br>
+    <select name="category">
+        <option value="">-- None --</option>
+        {% for cat in categories %}
+        <option value="{{ cat.name }}" {% if cat.name == part.category %}selected{% endif %}>{{ cat.name }}</option>
+        {% endfor %}
+    </select><br><br>
+
+    <label>Store:</label><br>
+    <select name="store">
+        <option value="">-- None --</option>
+        {% for s in stores %}
+        <option value="{{ s.name }}" {% if s.name == part.store %}selected{% endif %}>{{ s.name }}</option>
+        {% endfor %}
+    </select><br><br>
+
+    <label>Description:</label><br>
+    <input type="text" name="description" value="{{ part.description }}"><br><br>
+
+    <label>Price (USD):</label><br>
+    <input type="number" step="0.01" name="price" value="{{ part.price }}"><br><br>
+
+    <label>Quantity:</label><br>
+    <input type="number" name="quantity" value="{{ part.quantity }}"><br><br>
+
+    <label>Barcode:</label><br>
+    <input type="text" name="barcode" value="{{ part.barcode }}"><br><br>
+
+    <label>Bin Code:</label><br>
+    <input type="text" name="bin_code" value="{{ part.bin_code }}"><br><br>
+
+    <label>Project Used:</label><br>
+    <textarea name="notes" rows="5" cols="40">{{ part.notes }}</textarea><br><br>
+
+    <button type="submit">Save Changes</button>
+</form>
+
+</body>
+</html>

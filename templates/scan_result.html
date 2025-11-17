@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Scan Result</title>
+</head>
+<body>
+
+{% if not found %}
+<h1>No Part Found</h1>
+<p>Barcode: <strong>{{ barcode }}</strong></p>
+<p><a href="/add?barcode={{ barcode }}">Add this part</a></p>
+<p><a href="/scan">Scan another</a></p>
+{% else %}
+
+<h1>Part Found</h1>
+
+<p><a href="/scan">Scan Another</a></p>
+<p><a href="/part/{{ part.id }}/history">View Project Used History</a></p>
+
+<table border="1" cellpadding="6" cellspacing="0">
+    <tr><th>Part Number</th><td>{{ part.part_number }}</td></tr>
+    <tr><th>Category</th><td>{{ part.category }}</td></tr>
+    <tr><th>Store</th><td>{{ part.store }}</td></tr>
+    <tr><th>Description</th><td>{{ part.description }}</td></tr>
+    <tr><th>Price</th><td>${{ "%.2f"|format(part.price or 0) }}</td></tr>
+    <tr><th>Quantity</th><td>{{ part.quantity }}</td></tr>
+    <tr><th>Bin</th><td>{{ part.bin_code }}</td></tr>
+    <tr><th>Barcode</th><td>{{ part.barcode }}</td></tr>
+</table>
+
+<br>
+
+<h2>Remove 1 from Inventory</h2>
+<form action="/scan/remove_one" method="post">
+    <input type="hidden" name="part_id" value="{{ part.id }}">
+
+    <label>Project Used (note, optional):</label><br>
+    <input type="text" name="usage_note" style="width:300px;"><br><br>
+
+    <button type="submit">Remove 1</button>
+</form>
+
+{% endif %}
+
+</body>
+</html>

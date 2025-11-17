@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Project Used History</title>
+</head>
+<body>
+
+<h1>Project Used History for {{ part.part_number }}</h1>
+
+<p><a href="/parts">Back to Parts List</a></p>
+
+{% if lines and lines|length > 0 %}
+<table border="1" cellpadding="4" cellspacing="0">
+    <tr>
+        <th>#</th>
+        <th>Entry</th>
+        <th>Action</th>
+    </tr>
+    {% for line in lines %}
+    <tr>
+        <td>{{ loop.index0 }}</td>
+        <td><pre>{{ line }}</pre></td>
+        <td>
+            <form action="/part/{{ part.id }}/history/delete" method="post" onsubmit="return confirm('Delete this entry?');">
+                <input type="hidden" name="index" value="{{ loop.index0 }}">
+                <button type="submit">Delete</button>
+            </form>
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+{% else %}
+<p>No project usage notes yet.</p>
+{% endif %}
+
+</body>
+</html>

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Parts List</title>
+</head>
+<body>
+
+<h1>Parts List</h1>
+<p><a href="/">Back to Home</a></p>
+<p>
+    <a href="/add">Add New Part</a> |
+    <a href="/add/bulk">Bulk Add</a> |
+    <a href="/search">Search</a> |
+    <a href="/settings">Settings</a>
+</p>
+
+<table border="1" cellpadding="4" cellspacing="0">
+    <tr>
+        <th>ID</th>
+        <th>Part Number</th>
+        <th>Category</th>
+        <th>Store</th>
+        <th>Description</th>
+        <th>Price</th>
+        <th>Quantity</th>
+        <th>Barcode</th>
+        <th>Bin</th>
+        <th>Project Used</th>
+        <th>Actions</th>
+    </tr>
+    {% for part in parts %}
+    <tr>
+        <td>{{ part.id }}</td>
+        <td>{{ part.part_number }}</td>
+        <td>{{ part.category }}</td>
+        <td>{{ part.store }}</td>
+        <td>{{ part.description }}</td>
+        <td>${{ "%.2f"|format(part.price or 0) }}</td>
+        <td>{{ part.quantity }}</td>
+        <td>{{ part.barcode }}</td>
+        <td>{{ part.bin_code }}</td>
+        <td><a href="/part/{{ part.id }}/history">View</a></td>
+        <td>
+            <a href="/part/{{ part.id }}/edit">Edit</a>
+            <form action="/part/{{ part.id }}/delete" method="post" style="display:inline;" onsubmit="return confirm('Delete this part?');">
+                <button type="submit">Delete</button>
+            </form>
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+
+</body>
+</html>
