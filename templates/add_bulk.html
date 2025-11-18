@@ -14,31 +14,33 @@
         <form action="/add/bulk" method="post" class="row g-3">
 
             <!-- Global Controls -->
-            <div class="col-12">
-                <label class="form-label fw-bold">Global Category</label>
-                <div class="input-group mb-3">
-                    <select id="global_category" class="form-select">
-                        <option value="">-- None --</option>
-                        {% for cat in categories %}
-                        <option value="{{ cat.name }}">{{ cat.name }}</option>
-                        {% endfor %}
-                    </select>
-                    <button type="button" class="btn btn-outline-primary"
-                            onclick="applyCategoryToAll()">Apply to All</button>
+            <div class="row g-3 align-items-end mb-2">
+                <div class="col-md-6">
+                    <label class="form-label fw-bold mb-1">Global Category</label>
+                    <div class="input-group input-group-sm">
+                        <select id="global_category" class="form-select form-select-sm">
+                            <option value="">-- None --</option>
+                            {% for cat in categories %}
+                            <option value="{{ cat.name }}">{{ cat.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="button" class="btn btn-outline-primary btn-sm"
+                                onclick="applyCategoryToAll()">Apply</button>
+                    </div>
                 </div>
-            </div>
 
-            <div class="col-12">
-                <label class="form-label fw-bold">Global Store</label>
-                <div class="input-group mb-3">
-                    <select id="global_store" class="form-select">
-                        <option value="">-- None --</option>
-                        {% for s in stores %}
-                        <option value="{{ s.name }}">{{ s.name }}</option>
-                        {% endfor %}
-                    </select>
-                    <button type="button" class="btn btn-outline-primary"
-                            onclick="applyStoreToAll()">Apply to All</button>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold mb-1">Global Store</label>
+                    <div class="input-group input-group-sm">
+                        <select id="global_store" class="form-select form-select-sm">
+                            <option value="">-- None --</option>
+                            {% for s in stores %}
+                            <option value="{{ s.name }}">{{ s.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="button" class="btn btn-outline-primary btn-sm"
+                                onclick="applyStoreToAll()">Apply</button>
+                    </div>
                 </div>
             </div>
 
@@ -139,25 +141,45 @@ function applyStoreToAll() {
 
 <script>
 function bulkPasteFill(){
-const lines=document.getElementById('bulk_paste_box').value.split(/\r?\n/);
-let rows;
-let i=0;
-lines.forEach(v=>{
- if(!v.trim()) return;
- rows=document.querySelectorAll("input[name='part_number']");
- if(!rows[i]) addRow();
- rows=document.querySelectorAll("input[name='part_number']");
- rows[i].value=v.trim();
- autoFillFromPartNumber(rows[i]);
- rows[i].dispatchEvent(new Event("input"));
- i++;
-});
+    const lines = document
+        .getElementById('bulk_paste_box')
+        .value
+        .split(/\r?\n/)
+        .map(x => x.trim())
+        .filter(Boolean);
+
+    if (!lines.length) return;
+
+    const tbody = document.querySelector('table tbody');
+    const template = tbody.querySelector('tr');
+
+    if (!template) return;
+
+    // Ensure we have enough rows to populate all pasted lines
+    while (document.querySelectorAll("input[name='part_number']").length < lines.length) {
+        addRow(template, tbody);
+    }
+
+    const rows = document.querySelectorAll("input[name='part_number']");
+
+    lines.forEach((line, idx) => {
+        const input = rows[idx];
+        if (!input) return;
+        input.value = line;
+        autoFillFromPartNumber(input);
+        input.dispatchEvent(new Event("input"));
+    });
 }
-function addRow(){
- const tbl=document.querySelector('table tbody');
- const r=tbl.rows[1].cloneNode(true);
- r.querySelectorAll('input,select').forEach(x=>x.value='');
- tbl.appendChild(r);
+function addRow(template, tbody){
+ const rowClone = template.cloneNode(true);
+ rowClone.querySelectorAll('input,select').forEach(el => {
+     if (el.name === 'quantity') {
+         el.value = '1';
+     } else {
+         el.value = '';
+     }
+ });
+ tbody.appendChild(rowClone);
 }
 </script>
 
