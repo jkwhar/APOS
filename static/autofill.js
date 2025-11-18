@@ -16,176 +16,15 @@ function formatValue(val, unit) {
         return val + "R";
     }
 
- // =========================
-// CAPACITOR AUTOFILL RULES
-// =========================
-
-function parseCapacitance(raw) {
-    if (!raw) return null;
-
-    raw = raw.toLowerCase();
-
-    // Convert common formats:
-    // 4u7 → 4.7uF
-    // 4r7u → 4.7uF
-    // 10u → 10uF
-    // 470u → 470uF
-    // 1000u → 1000uF
-    // Ensure "u" always becomes "uF"
-
-    // 4u7 or 4r7 → 4.7uF
-    let m = raw.match(/(\d+)[ur](\d+)/);
-    if (m) {
-        return `${m[1]}.${m[2]}uF`;
+    // ----- Capacitors -----
+    if (unit === "F") {
+        // Normalize uF-style values
+        const ufMatch = val.match(/([\d\.]+)\s*u?f?/i);
+        if (ufMatch) return `${ufMatch[1]}u`;
+        return val;
     }
 
-    // 10u or 470u → 10uF / 470uF
-    m = raw.match(/(\d+)u/);
-    if (m) {
-        return `${m[1]}uF`;
-    }
-
-    // 1000uf / 4.7uf etc — clean up suffix
-    m = raw.match(/([\d\.]+)\s*u?f/);
-    if (m) {
-        return `${m[1]}uF`;
-    }
-
-    return null;
-}
-
-// =================================
-// MAIN CAPACITOR DESCRIPTION BUILDER
-// =================================
-
-function buildCapacitorDescription(partLower) {
-
-    // Extract capacitance token (4u7, 470u, 4r7u, etc)
-    const capMatch = partLower.match(/cap[-_]?([0-9a-z\.]+u[0-9a-z]*)/);
-    let uf = null;
-
-    if (capMatch) {
-        uf = parseCapacitance(capMatch[1]);
-    }
-
-    // Extract voltage (simple formats like 16v, 25v, 50v)
-    let volt = null;
-    const voltMatch = partLower.match(/(\d+)\s*v/);
-    if (voltMatch) volt = `${voltMatch[1]}V`;
-
-    // Build final description
-    let desc = "";
-    if (uf) desc += uf;
-    if (volt) desc += (desc ? " " : "") + volt;
-
-    return desc || null;
-}
-
-// ===============================
-// HOOK INTO autoFillFromPartNumber
-// ===============================
-
-function autoFillFromPartNumber(input) {
-
-    const pn = input.value.trim();
-    if (!pn) return;
-
-    const row = input.closest("tr");
-    const descField = row.querySelector("input[name='description']");
-    const catField  = row.querySelector("select[name='category']");
-
-    const lower = pn.toLowerCase();
-
-// =========================
-// CAPACITOR AUTOFILL RULES
-// =========================
-
-function parseCapacitance(raw) {
-    if (!raw) return null;
-
-    raw = raw.toLowerCase();
-
-    // Convert common formats:
-    // 4u7 → 4.7uF
-    // 4r7u → 4.7uF
-    // 10u → 10uF
-    // 470u → 470uF
-    // 1000u → 1000uF
-    // Ensure "u" always becomes "uF"
-
-    // 4u7 or 4r7 → 4.7uF
-    let m = raw.match(/(\d+)[ur](\d+)/);
-    if (m) {
-        return `${m[1]}.${m[2]}uF`;
-    }
-
-    // 10u or 470u → 10uF / 470uF
-    m = raw.match(/(\d+)u/);
-    if (m) {
-        return `${m[1]}uF`;
-    }
-
-    // 1000uf / 4.7uf etc — clean up suffix
-    m = raw.match(/([\d\.]+)\s*u?f/);
-    if (m) {
-        return `${m[1]}uF`;
-    }
-
-    return null;
-}
-
-// =================================
-// MAIN CAPACITOR DESCRIPTION BUILDER
-// =================================
-
-function buildCapacitorDescription(partLower) {
-
-    // Extract capacitance token (4u7, 470u, 4r7u, etc)
-    const capMatch = partLower.match(/cap[-_]?([0-9a-z\.]+u[0-9a-z]*)/);
-    let uf = null;
-
-    if (capMatch) {
-        uf = parseCapacitance(capMatch[1]);
-    }
-
-    // Extract voltage (simple formats like 16v, 25v, 50v)
-    let volt = null;
-    const voltMatch = partLower.match(/(\d+)\s*v/);
-    if (voltMatch) volt = `${voltMatch[1]}V`;
-
-    // Build final description
-    let desc = "";
-    if (uf) desc += uf;
-    if (volt) desc += (desc ? " " : "") + volt;
-
-    return desc || null;
-}
-
-// ===============================
-// HOOK INTO autoFillFromPartNumber
-// ===============================
-
-function autoFillFromPartNumber(input) {
-
-    const pn = input.value.trim();
-    if (!pn) return;
-
-    const row = input.closest("tr");
-    const descField = row.querySelector("input[name='description']");
-    const catField  = row.querySelector("select[name='category']");
-
-    const lower = pn.toLowerCase();
-
-    // ---- CAPACITOR ----
-    if (lower.startsWith("cap") || lower.includes("uf") || lower.includes("u")) {
-        catField.value = "Capacitor";
-
-        const desc = buildCapacitorDescription(lower);
-        if (desc) descField.value = desc;
-        return;
-    }
-
-    // (leave other rules untouched)
+    return val;
 }
 
 // Extract tolerance such as 1%, 5%, 10%, 20%
@@ -204,6 +43,19 @@ function extractWattage(pn) {
 function extractVoltage(pn) {
     const v = pn.match(/(\d+V)/i);
     return v ? v[1].toUpperCase() : "";
+}
+
+function setCategory(selectElem, targetText) {
+    if (!selectElem) return;
+
+    targetText = targetText.trim().toLowerCase();
+
+    for (let o of selectElem.options) {
+        if (o.text.trim().toLowerCase() === targetText) {
+            selectElem.value = o.value;
+            return;
+        }
+    }
 }
 
 function autoFillFromPartNumber(inputElem) {
@@ -279,18 +131,5 @@ function autoFillFromPartNumber(inputElem) {
     const allPN = document.querySelectorAll("input[name='part_number']");
     if (allPN.length && allPN[allPN.length - 1] === inputElem && inputElem.value.trim() !== "") {
         if (typeof addRow === "function") addRow();
-    }
-}
-
-function setCategory(selectElem, targetText) {
-    if (!selectElem) return;
-
-    targetText = targetText.trim().toLowerCase();
-
-    for (let o of selectElem.options) {
-        if (o.text.trim().toLowerCase() === targetText) {
-            selectElem.value = o.value;
-            return;
-        }
     }
 }

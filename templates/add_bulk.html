@@ -171,15 +171,21 @@ function bulkPasteFill(){
     });
 }
 function addRow(template, tbody){
- const rowClone = template.cloneNode(true);
- rowClone.querySelectorAll('input,select').forEach(el => {
-     if (el.name === 'quantity') {
-         el.value = '1';
-     } else {
-         el.value = '';
-     }
- });
- tbody.appendChild(rowClone);
+    const body = tbody || document.querySelector('table tbody');
+    const baseTemplate = template || body?.querySelector('tr');
+
+    if (!body || !baseTemplate) return;
+
+    const rowClone = baseTemplate.cloneNode(true);
+    rowClone.querySelectorAll('input,select').forEach(el => {
+        if (el.name === 'quantity') {
+            el.value = '1';
+        } else {
+            el.value = '';
+        }
+    });
+    body.appendChild(rowClone);
+    return rowClone;
 }
 </script>
 
