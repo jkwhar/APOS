@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
+import os
 
-from fastapi import FastAPI, Request, Form
+from fastapi import FastAPI, Request, Form, HTTPException
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -12,6 +13,7 @@ from datetime import datetime
 # DATABASE SETUP
 # ============================================================
 
+os.makedirs("data", exist_ok=True)
 engine = create_engine("sqlite:///data/parts.db", echo=True)
 
 
@@ -50,6 +52,39 @@ class Category(SQLModel, table=True):
 class Store(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     name: str
+
+
+def safe_str(value: str | int | float | None) -> str:
+    if value is None:
+        return ""
+    return value if isinstance(value, str) else str(value)
+
+
+def normalize_text(value: str | int | float | None) -> str | None:
+    text = safe_str(value).strip()
+    return text or None
+
+
+def parse_price(value: str | int | float | None) -> float | None:
+    text = safe_str(value).strip()
+    if not text:
+        return None
+    try:
+        price = float(text)
+    except ValueError:
+        return None
+    return price if price >= 0 else None
+
+
+def parse_quantity(value: str | int | float | None) -> int:
+    text = safe_str(value).strip()
+    if not text:
+        return 0
+    try:
+        quantity = int(text)
+    except ValueError:
+        return 0
+    return max(quantity, 0)
 
 
 # ============================================================
@@ -128,25 +163,18 @@ def search_page(request: Request, q: str | None = None):
     query = (q or "").strip()
 
     if query:
-        q_lower = query.lower()
+        pattern = f"%{query}%"
         with Session(engine) as session:
-            parts = session.exec(select(Part)).all()
-
-        for p in parts:
-            fields = [
-                str(p.id or ""),
-                p.part_number or "",
-                p.category or "",
-                p.store or "",
-                p.description or "",
-                str(p.price or ""),
-                str(p.quantity or ""),
-                p.barcode or "",
-                p.bin_code or "",
-                p.notes or "",
-            ]
-            if any(q_lower in f.lower() for f in fields):
-                results.append(p)
+            stmt = select(Part).where(
+                (Part.part_number.ilike(pattern))
+                | (Part.category.ilike(pattern))
+                | (Part.store.ilike(pattern))
+                | (Part.description.ilike(pattern))
+                | (Part.barcode.ilike(pattern))
+                | (Part.bin_code.ilike(pattern))
+                | (Part.notes.ilike(pattern))
+            )
+            results = session.exec(stmt).all()
 
     return templates.TemplateResponse(
         "search.html",
@@ -191,18 +219,21 @@ def remove_one(part_id: int = Form(...), usage_note: str = Form("")):
     with Session(engine) as session:
         part = session.get(Part, part_id)
 
-        if part:
-            barcode_value = part.barcode
+        if not part:
+            raise HTTPException(status_code=404, detail="Part not found")
 
-            if usage_note:
-                entry = f"Used: {usage_note}"
-                part.notes = (part.notes + "\n" + entry) if part.notes else entry
+        barcode_value = part.barcode
 
-            if part.quantity > 0:
-                part.quantity -= 1
+        if usage_note:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            entry = f"Used on {timestamp}: {usage_note}"
+            part.notes = (part.notes + "\n" + entry) if part.notes else entry
 
-            session.add(part)
-            session.commit()
+        if part.quantity > 0:
+            part.quantity -= 1
+
+        session.add(part)
+        session.commit()
 
     if not barcode_value:
         return RedirectResponse("/scan", status_code=HTTP_303_SEE_OTHER)
@@ -238,22 +269,27 @@ def add_part(
     category: str = Form(""),
     store: str = Form(""),
     description: str = Form(""),
-    price: float | None = Form(None),
-    quantity: int = Form(0),
+    price: str = Form(""),
+    quantity: str = Form("0"),
     barcode: str = Form(""),
     bin_code: str = Form(""),
     notes: str = Form(""),
 ):
+    normalized_part_number = part_number.strip()
+
+    if not normalized_part_number:
+        raise HTTPException(status_code=400, detail="Part number is required")
+
     new_part = Part(
-        part_number=part_number,
-        category=category,
-        store=store,
-        description=description,
-        price=price,
-        quantity=quantity,
-        barcode=barcode,
-        bin_code=bin_code,
-        notes=notes,
+        part_number=normalized_part_number,
+        category=normalize_text(category),
+        store=normalize_text(store),
+        description=normalize_text(description),
+        price=parse_price(price),
+        quantity=parse_quantity(quantity),
+        barcode=normalize_text(barcode),
+        bin_code=normalize_text(bin_code),
+        notes=normalize_text(notes),
     )
 
     with Session(engine) as session:
@@ -293,24 +329,22 @@ def add_bulk(
 ):
     with Session(engine) as session:
         for i in range(len(part_number)):
-            def safe_str(v):
-                return v if isinstance(v, str) else str(v) if v is not None else ""
+            normalized_part_number = safe_str(part_number[i]).strip()
 
-            for i in range(len(part_number)):
-                p = Part(
-                    part_number=safe_str(part_number[i]).strip(),
+            if not normalized_part_number:
+                continue
 
-                    category=safe_str(category[i]).strip() or None,
-                    store=safe_str(store[i]).strip() or None,
-                    description=safe_str(description[i]).strip() or None,
-
-                    price=float(price[i]) if safe_str(price[i]).strip() else None,
-                    quantity=int(quantity[i]) if safe_str(quantity[i]).strip() else 0,
-
-                    notes=None,
-                    barcode=safe_str(barcode[i]).strip() or None,
-                    bin_code=safe_str(bin_code[i]).strip() or None,
-                )
+            p = Part(
+                part_number=normalized_part_number,
+                category=normalize_text(category[i]) if i < len(category) else None,
+                store=normalize_text(store[i]) if i < len(store) else None,
+                description=normalize_text(description[i]) if i < len(description) else None,
+                price=parse_price(price[i]) if i < len(price) else None,
+                quantity=parse_quantity(quantity[i]) if i < len(quantity) else 0,
+                notes=normalize_text(notes[i]) if i < len(notes) else None,
+                barcode=normalize_text(barcode[i]) if i < len(barcode) else None,
+                bin_code=normalize_text(bin_code[i]) if i < len(bin_code) else None,
+            )
             session.add(p)
 
         session.commit()
@@ -342,8 +376,8 @@ def edit_part(
     category: str = Form(""),
     store: str = Form(""),
     description: str = Form(""),
-    price: float | None = Form(None),
-    quantity: int = Form(0),
+    price: str = Form(""),
+    quantity: str = Form("0"),
     barcode: str = Form(""),
     bin_code: str = Form(""),
     notes: str = Form(""),
@@ -351,15 +385,20 @@ def edit_part(
     with Session(engine) as session:
         part = session.get(Part, part_id)
         if part:
-            part.part_number = part_number
-            part.category = category
-            part.store = store
-            part.description = description
-            part.price = price
-            part.quantity = quantity
-            part.barcode = barcode
-            part.bin_code = bin_code
-            part.notes = notes
+            normalized_part_number = part_number.strip()
+
+            if not normalized_part_number:
+                raise HTTPException(status_code=400, detail="Part number is required")
+
+            part.part_number = normalized_part_number
+            part.category = normalize_text(category)
+            part.store = normalize_text(store)
+            part.description = normalize_text(description)
+            part.price = parse_price(price)
+            part.quantity = parse_quantity(quantity)
+            part.barcode = normalize_text(barcode)
+            part.bin_code = normalize_text(bin_code)
+            part.notes = normalize_text(notes)
             session.add(part)
             session.commit()
 
