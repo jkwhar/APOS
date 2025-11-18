@@ -1,55 +1,67 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Parts List</title>
-</head>
-<body>
+{% extends "base.html" %}
 
-<h1>Parts List</h1>
-<p><a href="/">Back to Home</a></p>
-<p>
-    <a href="/add">Add New Part</a> |
-    <a href="/add/bulk">Bulk Add</a> |
-    <a href="/search">Search</a> |
-    <a href="/settings">Settings</a>
-</p>
+{% block title %}Parts List — APOS Inventory{% endblock %}
 
-<table border="1" cellpadding="4" cellspacing="0">
-    <tr>
-        <th>ID</th>
-        <th>Part Number</th>
-        <th>Category</th>
-        <th>Store</th>
-        <th>Description</th>
-        <th>Price</th>
-        <th>Quantity</th>
-        <th>Barcode</th>
-        <th>Bin</th>
-        <th>Project Used</th>
-        <th>Actions</th>
-    </tr>
-    {% for part in parts %}
-    <tr>
-        <td>{{ part.id }}</td>
-        <td>{{ part.part_number }}</td>
-        <td>{{ part.category }}</td>
-        <td>{{ part.store }}</td>
-        <td>{{ part.description }}</td>
-        <td>${{ "%.2f"|format(part.price or 0) }}</td>
-        <td>{{ part.quantity }}</td>
-        <td>{{ part.barcode }}</td>
-        <td>{{ part.bin_code }}</td>
-        <td><a href="/part/{{ part.id }}/history">View</a></td>
-        <td>
-            <a href="/part/{{ part.id }}/edit">Edit</a>
-            <form action="/part/{{ part.id }}/delete" method="post" style="display:inline;" onsubmit="return confirm('Delete this part?');">
-                <button type="submit">Delete</button>
-            </form>
-        </td>
-    </tr>
-    {% endfor %}
-</table>
+{% block content %}
+<h1 class="mb-4">Parts List</h1>
 
-</body>
-</html>
+<div class="mb-3">
+    <a href="{{ url_for('add_part_form') }}" class="btn btn-primary">Add New Part</a>
+    <a href="{{ url_for('add_bulk_form') }}" class="btn btn-secondary">Bulk Add</a>
+    <a href="{{ url_for('search_page') }}" class="btn btn-outline-primary">Search</a>
+    <a href="{{ url_for('settings_page') }}" class="btn btn-outline-secondary">Settings</a>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-striped table-bordered align-middle">
+        <thead class="table-light">
+            <tr>
+                <th>ID</th>
+                <th>Part Number</th>
+                <th>Category</th>
+                <th>Store</th>
+                <th>Description</th>
+                <th>Price</th>
+                <th>Qty</th>
+                <th>Barcode</th>
+                <th>Bin</th>
+                <th>Usage</th>
+                <th class="text-center">Actions</th>
+            </tr>
+        </thead>
+
+        <tbody>
+        {% for part in parts %}
+            <tr>
+                <td>{{ part.id }}</td>
+                <td>{{ part.part_number }}</td>
+                <td>{{ part.category }}</td>
+                <td>{{ part.store }}</td>
+                <td>{{ part.description }}</td>
+                <td>${{ "%.2f"|format(part.price or 0) }}</td>
+                <td>{{ part.quantity }}</td>
+                <td>{{ part.barcode }}</td>
+                <td>{{ part.bin_code }}</td>
+
+                <td>
+                    <a href="/part/{{ part.id }}/history" class="btn btn-sm btn-info">View</a>
+                </td>
+
+                <td class="text-center">
+                    <a href="/part/{{ part.id }}/edit" class="btn btn-sm btn-warning">Edit</a>
+
+                    <form action="/part/{{ part.id }}/delete"
+                          method="post"
+                          class="d-inline"
+                          onsubmit="return confirm('Delete this part?');">
+                        <button type="submit" class="btn btn-sm btn-danger">
+                            Delete
+                        </button>
+                    </form>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

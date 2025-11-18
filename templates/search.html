@@ -1,61 +1,73 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Search Parts</title>
-</head>
-<body>
+{% extends "base.html" %}
+{% block title %}Search Parts — APOS Inventory{% endblock %}
 
-<h1>Search Parts</h1>
+{% block content %}
 
-<p><a href="/">Back to Home</a></p>
+<h2 class="mb-4">Search Parts</h2>
 
-<form method="get" action="/search">
-    <input type="text" name="q" value="{{ q }}" placeholder="Search term (e.g. 32, esp32, resistor)">
-    <button type="submit">Search</button>
+<form method="get" action="/search" class="input-group mb-4">
+    <input type="text"
+           name="q"
+           value="{{ q }}"
+           class="form-control form-control-lg"
+           placeholder="Search term (e.g. 32, esp32, resistor)">
+    <button class="btn btn-primary btn-lg" type="submit">Search</button>
 </form>
 
 {% if q %}
-<h2>Results for "{{ q }}"</h2>
+    <h4 class="mb-3">Results for "{{ q }}"</h4>
 
-{% if results %}
-<table border="1" cellpadding="4" cellspacing="0">
-    <tr>
-        <th>ID</th>
-        <th>Part Number</th>
-        <th>Category</th>
-        <th>Store</th>
-        <th>Description</th>
-        <th>Price</th>
-        <th>Quantity</th>
-        <th>Barcode</th>
-        <th>Bin</th>
-        <th>Project Used</th>
-        <th>Actions</th>
-    </tr>
-    {% for part in results %}
-    <tr>
-        <td>{{ part.id }}</td>
-        <td>{{ part.part_number }}</td>
-        <td>{{ part.category }}</td>
-        <td>{{ part.store }}</td>
-        <td>{{ part.description }}</td>
-        <td>${{ "%.2f"|format(part.price or 0) }}</td>
-        <td>{{ part.quantity }}</td>
-        <td>{{ part.barcode }}</td>
-        <td>{{ part.bin_code }}</td>
-        <td><a href="/part/{{ part.id }}/history">View</a></td>
-        <td>
-            <a href="/part/{{ part.id }}/edit">Edit</a>
-        </td>
-    </tr>
-    {% endfor %}
-</table>
-{% else %}
-<p>No matches found.</p>
+    {% if results %}
+    <div class="table-responsive">
+        <table class="table table-striped table-bordered align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>ID</th>
+                    <th>Part Number</th>
+                    <th>Category</th>
+                    <th>Store</th>
+                    <th>Description</th>
+                    <th>Price</th>
+                    <th>Qty</th>
+                    <th>Barcode</th>
+                    <th>Bin</th>
+                    <th>Usage</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+
+            <tbody>
+            {% for part in results %}
+                <tr>
+                    <td>{{ part.id }}</td>
+                    <td>{{ part.part_number }}</td>
+                    <td>{{ part.category }}</td>
+                    <td>{{ part.store }}</td>
+                    <td>{{ part.description }}</td>
+                    <td>${{ "%.2f"|format(part.price or 0) }}</td>
+                    <td>{{ part.quantity }}</td>
+                    <td>{{ part.barcode }}</td>
+                    <td>{{ part.bin_code }}</td>
+                    <td>
+                        <form action="/scan/remove_one" method="post" class="d-flex gap-2">
+                            <input type="hidden" name="part_id" value="{{ part.id }}">
+                            <input type="hidden" name="usage_note" value="">
+                            <button class="btn btn-sm btn-danger" type="submit">Use 1</button>
+                        </form>
+                        <a href="/part/{{ part.id }}/history" class="btn btn-sm btn-info mt-1">History</a>
+                    </td>
+                    <td>
+                        <a href="/part/{{ part.id }}/edit" class="btn btn-sm btn-warning">Edit</a>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% else %}
+    <p class="text-muted">No matches found.</p>
+    {% endif %}
 {% endif %}
 
-{% endif %}
-
-</body>
-</html>
+{% endblock %}

@@ -6,6 +6,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlmodel import SQLModel, Field, Session, create_engine, select
 from starlette.status import HTTP_303_SEE_OTHER
+from datetime import datetime
 
 # ============================================================
 # DATABASE SETUP
@@ -58,8 +59,54 @@ class Store(SQLModel, table=True):
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
+#Find page
 
+@app.get("/find", response_class=HTMLResponse)
+def find_parts(request: Request, query: str | None = None, barcode: str | None = None):
 
+    search_value = query or barcode or ""
+
+    if not search_value:
+        return templates.TemplateResponse("find.html",
+                                          {"request": request, "parts": [], "search_value": ""})
+
+    with Session(engine) as session:
+        stmt = select(Part).where(
+            (Part.part_number.ilike(f"%{search_value}%")) |
+            (Part.description.ilike(f"%{search_value}%")) |
+            (Part.category.ilike(f"%{search_value}%")) |
+            (Part.store.ilike(f"%{search_value}%")) |
+            (Part.barcode.ilike(f"%{search_value}%")) |
+            (Part.bin_code.ilike(f"%{search_value}%"))
+        )
+        parts = session.exec(stmt).all()
+
+    return templates.TemplateResponse("find.html",
+                                      {"request": request, "parts": parts, "search_value": search_value})
+
+# consume route
+
+@app.post("/find/use/{part_id}")
+def use_one_part(part_id: int, request: Request):
+
+    referer = request.headers.get("referer", "/find")
+
+    with Session(engine) as session:
+        part = session.get(Part, part_id)
+
+        if not part:
+            return RedirectResponse(referer, status_code=303)
+
+        if part.quantity > 0:
+            part.quantity -= 1
+
+            log_line = f"Used 1 on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            part.notes = (part.notes + "\n" if part.notes else "") + log_line
+
+            session.add(part)
+            session.commit()
+
+    return RedirectResponse(referer, status_code=303)
 # ============================================================
 # PARTS LIST
 # ============================================================
@@ -246,20 +293,24 @@ def add_bulk(
 ):
     with Session(engine) as session:
         for i in range(len(part_number)):
-            if part_number[i].strip() == "":
-                continue
+            def safe_str(v):
+                return v if isinstance(v, str) else str(v) if v is not None else ""
 
-            p = Part(
-                part_number=part_number[i],
-                category=category[i],
-                store=store[i],
-                description=description[i],
-                price=float(price[i]) if price[i] else None,
-                quantity=quantity[i],
-                barcode=barcode[i],
-                bin_code=bin_code[i],
-                notes = notes[i] if i < len(notes) else None,
-            )
+            for i in range(len(part_number)):
+                p = Part(
+                    part_number=safe_str(part_number[i]).strip(),
+
+                    category=safe_str(category[i]).strip() or None,
+                    store=safe_str(store[i]).strip() or None,
+                    description=safe_str(description[i]).strip() or None,
+
+                    price=float(price[i]) if safe_str(price[i]).strip() else None,
+                    quantity=int(quantity[i]) if safe_str(quantity[i]).strip() else 0,
+
+                    notes=None,
+                    barcode=safe_str(barcode[i]).strip() or None,
+                    bin_code=safe_str(bin_code[i]).strip() or None,
+                )
             session.add(p)
 
         session.commit()
