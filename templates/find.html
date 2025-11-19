@@ -25,56 +25,7 @@
     {% if parts|length == 0 %}
       <p class="text-muted fst-italic">No matching parts.</p>
     {% else %}
-
-    <!-- RESULTS TABLE -->
-    <div class="table-responsive">
-      <table class="table table-hover align-middle">
-        <thead class="table-primary">
-          <tr>
-            <th>Part #</th>
-            <th>Description</th>
-            <th>Category</th>
-            <th>Store</th>
-            <th class="text-center">Qty</th>
-            <th>Bin</th>
-            <th class="text-center">Action</th>
-          </tr>
-        </thead>
-
-        <tbody>
-        {% for p in parts %}
-          <tr>
-
-            <td><b>{{ p.part_number }}</b></td>
-            <td>{{ p.description }}</td>
-            <td>{{ p.category }}</td>
-            <td>{{ p.store }}</td>
-
-            <td class="text-center">
-              {% if p.quantity <= 0 %}
-                  <span class="badge bg-danger">0</span>
-              {% elif p.quantity <= 2 %}
-                  <span class="badge bg-warning text-dark">{{ p.quantity }}</span>
-              {% else %}
-                  <span class="badge bg-secondary">{{ p.quantity }}</span>
-              {% endif %}
-            </td>
-
-            <td>{{ p.bin_code or "-" }}</td>
-
-            <td class="text-center">
-              <form action="/find/use/{{p.id}}" method="post" class="d-inline">
-                <button class="btn btn-sm btn-success">Use 1</button>
-              </form>
-            </td>
-
-          </tr>
-        {% endfor %}
-        </tbody>
-
-      </table>
-    </div>
-
+      {% include "_parts_table.html" %}
     {% endif %}
 
   </div>
