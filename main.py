@@ -66,6 +66,12 @@ class Store(SQLModel, table=True):
     name: str
 
 
+class CategoryPrefix(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    prefix: str
+    category_name: str
+
+
 def safe_str(value: str | int | float | None) -> str:
     if value is None:
         return ""
@@ -191,13 +197,9 @@ def home(request: Request):
             select(func.count(Part.id)).where(Part.quantity <= 2)
         ).one()
         total_categories = session.exec(select(func.count(Category.id))).one()
-        recent_logs = (
-            session.exec(
-                select(UsageLog)
-                .order_by(UsageLog.created_at.desc())
-                .limit(5)
-            ).all()
-        )
+        low_inventory_parts = session.exec(
+            select(Part).where(Part.quantity <= 2).order_by(Part.quantity, Part.part_number)
+        ).all()
     return templates.TemplateResponse(
         "index.html",
         {
@@ -205,7 +207,7 @@ def home(request: Request):
             "total_parts": total_parts,
             "low_stock": low_stock,
             "total_categories": total_categories,
-            "recent_logs": recent_logs,
+            "low_inventory_parts": low_inventory_parts,
         },
     )
 #Find page
@@ -370,6 +372,11 @@ def add_part_form(request: Request, barcode: str | None = None):
     with Session(engine) as session:
         categories = session.exec(select(Category)).all()
         stores = session.exec(select(Store)).all()
+        prefix_entries = session.exec(select(CategoryPrefix)).all()
+    category_prefix_map = [
+        {"prefix": entry.prefix, "category": entry.category_name}
+        for entry in prefix_entries
+    ]
     return templates.TemplateResponse(
         "add_part.html",
         {
@@ -377,6 +384,7 @@ def add_part_form(request: Request, barcode: str | None = None):
             "barcode": barcode,
             "categories": categories,
             "stores": stores,
+            "category_prefix_map": category_prefix_map,
         },
     )
 
@@ -428,6 +436,7 @@ def add_bulk_form(request: Request):
     with Session(engine) as session:
         categories = session.exec(select(Category)).all()
         stores = session.exec(select(Store)).all()
+        prefix_entries = session.exec(select(CategoryPrefix)).all()
     rows = [
         {
             "part_number": "",
@@ -441,6 +450,10 @@ def add_bulk_form(request: Request):
         }
         for _ in range(5)
     ]
+    category_prefix_map = [
+        {"prefix": entry.prefix, "category": entry.category_name}
+        for entry in prefix_entries
+    ]
     return templates.TemplateResponse(
         "add_bulk.html",
         {
@@ -449,6 +462,7 @@ def add_bulk_form(request: Request):
             "categories": categories,
             "stores": stores,
             "error_message": None,
+            "category_prefix_map": category_prefix_map,
         },
     )
 
@@ -475,6 +489,7 @@ def add_bulk(
                 "categories": categories,
                 "stores": stores,
                 "error_message": message,
+                "category_prefix_map": category_prefix_map,
             },
             status_code=400,
         )
@@ -482,6 +497,11 @@ def add_bulk(
     with Session(engine) as session:
         categories = session.exec(select(Category)).all()
         stores = session.exec(select(Store)).all()
+        prefix_entries = session.exec(select(CategoryPrefix)).all()
+        category_prefix_map = [
+            {"prefix": entry.prefix, "category": entry.category_name}
+            for entry in prefix_entries
+        ]
         rows: list[dict[str, str]] = []
         any_saved = False
 
@@ -664,9 +684,15 @@ def settings_page(request: Request):
     with Session(engine) as session:
         categories = session.exec(select(Category)).all()
         stores = session.exec(select(Store)).all()
+        category_prefixes = session.exec(select(CategoryPrefix)).all()
     return templates.TemplateResponse(
         "settings.html",
-        {"request": request, "categories": categories, "stores": stores},
+        {
+            "request": request,
+            "categories": categories,
+            "stores": stores,
+            "category_prefixes": category_prefixes,
+        },
     )
 
 
@@ -732,5 +758,49 @@ def store_delete(store_id: int = Form(...)):
         s = session.get(Store, store_id)
         if s:
             session.delete(s)
+            session.commit()
+    return RedirectResponse("/settings", status_code=HTTP_303_SEE_OTHER)
+
+
+@app.post("/settings/category_prefix/add")
+def category_prefix_add(prefix: str = Form(...), category_name: str = Form(...)):
+    prefix_value = prefix.strip()
+    category_value = category_name.strip()
+    if not prefix_value or not category_value:
+        return RedirectResponse("/settings", status_code=HTTP_303_SEE_OTHER)
+
+    with Session(engine) as session:
+        existing = session.exec(
+            select(CategoryPrefix).where(func.lower(CategoryPrefix.prefix) == prefix_value.lower())
+        ).first()
+        if existing:
+            existing.prefix = prefix_value
+            existing.category_name = category_value
+            session.add(existing)
+        else:
+            session.add(CategoryPrefix(prefix=prefix_value, category_name=category_value))
+        session.commit()
+
+    return RedirectResponse("/settings", status_code=HTTP_303_SEE_OTHER)
+
+
+@app.post("/settings/category_prefix/edit")
+def category_prefix_edit(map_id: int = Form(...), prefix: str = Form(...), category_name: str = Form(...)):
+    with Session(engine) as session:
+        mapping = session.get(CategoryPrefix, map_id)
+        if mapping and prefix.strip() and category_name.strip():
+            mapping.prefix = prefix.strip()
+            mapping.category_name = category_name.strip()
+            session.add(mapping)
+            session.commit()
+    return RedirectResponse("/settings", status_code=HTTP_303_SEE_OTHER)
+
+
+@app.post("/settings/category_prefix/delete")
+def category_prefix_delete(map_id: int = Form(...)):
+    with Session(engine) as session:
+        mapping = session.get(CategoryPrefix, map_id)
+        if mapping:
+            session.delete(mapping)
             session.commit()
     return RedirectResponse("/settings", status_code=HTTP_303_SEE_OTHER)

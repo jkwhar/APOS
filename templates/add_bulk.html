@@ -228,6 +228,9 @@ function addRow(){
 }
 </script>
 
+<script>
+    window.categoryPrefixMappings = {{ category_prefix_map | tojson | safe }};
+</script>
 <script src="/static/autofill.js"></script>
 
 {% endblock %}

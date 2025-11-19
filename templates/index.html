@@ -43,36 +43,36 @@
 
     <div class="card shadow-sm">
         <div class="card-header bg-light">
-            <h5 class="mb-0">Recent Activity</h5>
+            <h5 class="mb-0">Low Inventory (≤ 2)</h5>
         </div>
         <div class="card-body">
-            {% if recent_logs %}
+            {% if low_inventory_parts %}
             <div class="table-responsive">
                 <table class="table table-sm align-middle">
                     <thead>
                         <tr>
-                            <th>Part ID</th>
-                            <th>Action</th>
-                            <th>Detail</th>
-                            <th>Qty Δ</th>
-                            <th>Time</th>
+                            <th>Part #</th>
+                            <th>Description</th>
+                            <th>Category</th>
+                            <th>Bin</th>
+                            <th class="text-end">Qty</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for log in recent_logs %}
+                        {% for part in low_inventory_parts %}
                         <tr>
-                            <td><a href="/part/{{ log.part_id }}/history">#{{ log.part_id }}</a></td>
-                            <td>{{ log.action }}</td>
-                            <td>{{ log.detail or "-" }}</td>
-                            <td>{{ log.quantity_delta if log.quantity_delta is not none else "—" }}</td>
-                            <td>{{ log.created_at.strftime("%m/%d/%Y %I:%M %p") }}</td>
+                            <td><a href="/part/{{ part.id }}/history">{{ part.part_number }}</a></td>
+                            <td>{{ part.description or "—" }}</td>
+                            <td>{{ part.category or "—" }}</td>
+                            <td>{{ part.bin_code or "—" }}</td>
+                            <td class="text-end fw-semibold">{{ part.quantity }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
             {% else %}
-                <p class="text-muted mb-0">No usage has been recorded yet.</p>
+                <p class="text-muted mb-0">Great news! Nothing is below the warning threshold.</p>
             {% endif %}
         </div>
     </div>

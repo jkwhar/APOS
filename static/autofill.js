@@ -16,6 +16,45 @@ function setCategory(selectElem, targetText) {
     }
 }
 
+function categoryOptionExists(selectElem, targetText) {
+    if (!selectElem || !targetText) return false;
+    const normalized = targetText.trim().toLowerCase();
+    if (!normalized) return false;
+    return Array.from(selectElem.options).some(
+        (o) => o.text.trim().toLowerCase() === normalized
+    );
+}
+
+function getCategoryPrefixMappings() {
+    if (typeof window === "undefined") return [];
+    if (!Array.isArray(window.categoryPrefixMappings)) {
+        window.categoryPrefixMappings = [];
+    }
+    return window.categoryPrefixMappings;
+}
+
+function findMappedCategory(partNumber) {
+    if (!partNumber) return null;
+    const normalizedPN = partNumber.trim().toLowerCase();
+    if (!normalizedPN) return null;
+
+    const mappings = getCategoryPrefixMappings();
+    let bestMatch = null;
+
+    for (const entry of mappings) {
+        if (!entry || !entry.prefix || !entry.category) continue;
+        const prefixNormalized = entry.prefix.trim().toLowerCase();
+        if (!prefixNormalized) continue;
+        if (normalizedPN.startsWith(prefixNormalized)) {
+            if (!bestMatch || prefixNormalized.length > bestMatch.length) {
+                bestMatch = { category: entry.category, length: prefixNormalized.length };
+            }
+        }
+    }
+
+    return bestMatch ? bestMatch.category : null;
+}
+
 // ------------------------
 // Helper: Extract tolerance
 // ------------------------
@@ -265,6 +304,7 @@ function buildMechanicalDescription(pn) {
         return {
             description: typeLabel,
             category: typeDetail?.category || null,
+            typeLabel,
         };
     }
 
@@ -289,6 +329,7 @@ function buildMechanicalDescription(pn) {
     return {
         description: description.trim(),
         category: typeDetail?.category || null,
+        typeLabel,
     };
 }
 
@@ -356,12 +397,30 @@ function autoFillFromPartNumber(inputElem) {
 
     if (!descField || !catField) return;
 
+    const mappedCategory = findMappedCategory(pn);
+    let categoryLocked = false;
+    let mappedCategoryLower = null;
+    if (mappedCategory) {
+        mappedCategoryLower = mappedCategory.trim().toLowerCase();
+        setCategory(catField, mappedCategory);
+        categoryLocked = true;
+    }
+
     const applyAutofill = (description, category) => {
         if (description) {
             descField.value = description;
         }
         if (category) {
-            setCategory(catField, category);
+            const normalizedCategory = category.trim().toLowerCase();
+            if (
+                !categoryLocked ||
+                (mappedCategoryLower && normalizedCategory === mappedCategoryLower)
+            ) {
+                setCategory(catField, category);
+                if (!categoryLocked) {
+                    categoryLocked = true;
+                }
+            }
         }
         return true;
     };
@@ -371,7 +430,16 @@ function autoFillFromPartNumber(inputElem) {
     // ==============================
     const mechanicalInfo = buildMechanicalDescription(pn);
     if (mechanicalInfo) {
-        applyAutofill(mechanicalInfo.description, mechanicalInfo.category);
+        let categoryToApply = mechanicalInfo.category;
+        if (
+            !categoryToApply &&
+            mechanicalInfo.typeLabel &&
+            categoryOptionExists(catField, mechanicalInfo.typeLabel)
+        ) {
+            categoryToApply = mechanicalInfo.typeLabel;
+        }
+
+        applyAutofill(mechanicalInfo.description, categoryToApply);
         return;
     }
 
