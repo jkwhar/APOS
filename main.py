@@ -22,6 +22,7 @@ engine = create_engine("sqlite:///data/parts.db", echo=True)
 async def lifespan(app: FastAPI):
     SQLModel.metadata.create_all(engine)
     migrate_legacy_notes()
+    seed_initial_data()
     yield
 
 
@@ -149,6 +150,32 @@ def migrate_legacy_notes() -> None:
                 create_usage_entry(session, part, "Legacy entry", detail=line)
             part.notes = None
             session.add(part)
+        session.commit()
+
+
+def seed_initial_data() -> None:
+    default_categories = [
+        "Capacitor",
+        "Resistor",
+        "Nuts",
+        "Bolts",
+        "Washers",
+        "Screws",
+        "Heat Shrinks",
+    ]
+    default_stores = ["Amazon", "Ebay"]
+
+    with Session(engine) as session:
+        existing_categories = {c.name.lower() for c in session.exec(select(Category)).all()}
+        for name in default_categories:
+            if name.lower() not in existing_categories:
+                session.add(Category(name=name))
+
+        existing_stores = {s.name.lower() for s in session.exec(select(Store)).all()}
+        for name in default_stores:
+            if name.lower() not in existing_stores:
+                session.add(Store(name=name))
+
         session.commit()
 
 
