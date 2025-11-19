@@ -11,6 +11,12 @@
 <div class="card shadow-sm">
     <div class="card-body">
 
+        {% if error_message %}
+        <div class="alert alert-danger">
+            {{ error_message }}
+        </div>
+        {% endif %}
+
         <form action="/add/bulk" method="post" class="row g-3">
 
             <!-- Global Controls -->
@@ -19,7 +25,7 @@
                     <label class="form-label fw-bold mb-1">Global Category</label>
                     <div class="input-group input-group-sm">
                         <select id="global_category" class="form-select form-select-sm">
-                            <option value="">-- None --</option>
+                            <option value=""></option>
                             {% for cat in categories %}
                             <option value="{{ cat.name }}">{{ cat.name }}</option>
                             {% endfor %}
@@ -33,7 +39,7 @@
                     <label class="form-label fw-bold mb-1">Global Store</label>
                     <div class="input-group input-group-sm">
                         <select id="global_store" class="form-select form-select-sm">
-                            <option value="">-- None --</option>
+                            <option value=""></option>
                             {% for s in stores %}
                             <option value="{{ s.name }}">{{ s.name }}</option>
                             {% endfor %}
@@ -67,50 +73,58 @@
                     </thead>
 
                     <tbody>
-                    {% for r in rows %}
+                    {% for row in rows %}
                         <tr>
                             <td>
                                 <input type="text" name="part_number"
                                        class="form-control"
+                                       value="{{ row.part_number }}"
                                        onblur="autoFillFromPartNumber(this)">
                             </td>
 
                             <td>
                                 <select name="category" class="form-select row_category">
-                                    <option value="">-- None --</option>
+                                    <option value=""></option>
                                     {% for cat in categories %}
-                                    <option value="{{ cat.name }}">{{ cat.name }}</option>
+                                    <option value="{{ cat.name }}"
+                                            {% if row.category == cat.name %}selected{% endif %}>{{ cat.name }}</option>
                                     {% endfor %}
                                 </select>
                             </td>
 
                             <td>
                                 <select name="store" class="form-select row_store">
-                                    <option value="">-- None --</option>
+                                    <option value=""></option>
                                     {% for s in stores %}
-                                    <option value="{{ s.name }}">{{ s.name }}</option>
+                                    <option value="{{ s.name }}"
+                                            {% if row.store == s.name %}selected{% endif %}>{{ s.name }}</option>
                                     {% endfor %}
                                 </select>
                             </td>
 
                             <td>
-                                <input type="text" name="description" class="form-control">
+                                <input type="text" name="description" class="form-control"
+                                       value="{{ row.description }}">
                             </td>
 
                             <td>
-                                <input type="number" step="0.01" name="price" class="form-control">
+                                <input type="number" step="0.01" name="price" class="form-control"
+                                       value="{{ row.price }}">
                             </td>
 
                             <td>
-                                <input type="number" name="quantity" value="1" class="form-control">
+                                <input type="number" name="quantity" class="form-control"
+                                       value="{{ row.quantity }}">
                             </td>
 
                             <td>
-                                <input type="text" name="barcode" class="form-control">
+                                <input type="text" name="barcode" class="form-control"
+                                       value="{{ row.barcode }}">
                             </td>
 
                             <td>
-                                <input type="text" name="bin_code" class="form-control">
+                                <input type="text" name="bin_code" class="form-control"
+                                       value="{{ row.bin_code }}">
                             </td>
                         </tr>
                     {% endfor %}
@@ -157,9 +171,15 @@ lines.forEach(v=>{
 }
 function addRow(){
  const tbl=document.querySelector('table tbody');
- const r=tbl.rows[1].cloneNode(true);
- r.querySelectorAll('input,select').forEach(x=>x.value='');
- tbl.appendChild(r);
+ if(!tbl) return;
+ const template = tbl.querySelector('tr');
+ if(!template) return;
+ const newRow = template.cloneNode(true);
+ newRow.querySelectorAll('input').forEach(input=>{
+   input.value = (input.name === 'quantity') ? '1' : '';
+ });
+ newRow.querySelectorAll('select').forEach(select=>select.value='');
+ tbl.appendChild(newRow);
 }
 </script>
 

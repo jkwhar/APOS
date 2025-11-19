@@ -87,8 +87,13 @@ def parse_quantity(value: str | int | float | None) -> int:
     return max(quantity, 0)
 
 
+def blank_if_none_word(value: str | int | float | None) -> str:
+    text = safe_str(value).strip()
+    return "" if text.lower() == "none" else text
+
+
 def format_usage_log(prefix: str, detail: str | None = None) -> str:
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    timestamp = datetime.now().strftime("%m/%d/%Y %I:%M %p")
     if detail:
         return f"{prefix} on {timestamp}: {detail}"
     return f"{prefix} on {timestamp}"
@@ -96,6 +101,13 @@ def format_usage_log(prefix: str, detail: str | None = None) -> str:
 
 def append_note(part: "Part", entry: str) -> None:
     part.notes = f"{part.notes}\n{entry}" if part.notes else entry
+
+
+def log_inventory_addition(part: "Part", amount: int, source: str | None = None) -> None:
+    if amount <= 0:
+        return
+    detail = source.strip() if source else None
+    append_note(part, format_usage_log(f"Inventory added (+{amount})", detail))
 
 
 # ============================================================
@@ -302,6 +314,8 @@ def add_part(
         notes=normalize_text(notes),
     )
 
+    log_inventory_addition(new_part, new_part.quantity, "Single add")
+
     with Session(engine) as session:
         session.add(new_part)
         session.commit()
@@ -318,44 +332,125 @@ def add_bulk_form(request: Request):
     with Session(engine) as session:
         categories = session.exec(select(Category)).all()
         stores = session.exec(select(Store)).all()
-    rows = list(range(5))
+    rows = [
+        {
+            "part_number": "",
+            "category": "",
+            "store": "",
+            "description": "",
+            "price": "",
+            "quantity": "1",
+            "barcode": "",
+            "bin_code": "",
+        }
+        for _ in range(5)
+    ]
     return templates.TemplateResponse(
         "add_bulk.html",
-        {"request": request, "rows": rows, "categories": categories, "stores": stores},
+        {
+            "request": request,
+            "rows": rows,
+            "categories": categories,
+            "stores": stores,
+            "error_message": None,
+        },
     )
 
 
 @app.post("/add/bulk")
 def add_bulk(
+    request: Request,
     part_number: list[str] = Form(...),
-    category: list[str] = Form(...),
-    store: list[str] = Form(...),
-    description: list[str] = Form(...),
-    price: list[str] = Form(...),
-    quantity: list[int] = Form(...),
-    barcode: list[str] = Form(...),
-    bin_code: list[str] = Form(...),
+    category: list[str] = Form([]),
+    store: list[str] = Form([]),
+    description: list[str] = Form([]),
+    price: list[str] = Form([]),
+    quantity: list[str] = Form([]),
+    barcode: list[str] = Form([]),
+    bin_code: list[str] = Form([]),
     notes: list[str] = Form([]),
 ):
+    def render_error(message: str, rows_data: list[dict[str, str]]):
+        return templates.TemplateResponse(
+            "add_bulk.html",
+            {
+                "request": request,
+                "rows": rows_data,
+                "categories": categories,
+                "stores": stores,
+                "error_message": message,
+            },
+            status_code=400,
+        )
+
     with Session(engine) as session:
+        categories = session.exec(select(Category)).all()
+        stores = session.exec(select(Store)).all()
+        rows: list[dict[str, str]] = []
+        any_saved = False
+
         for i in range(len(part_number)):
-            normalized_part_number = safe_str(part_number[i]).strip()
+            row = {
+                "part_number": safe_str(part_number[i]).strip(),
+                "category": blank_if_none_word(category[i]) if i < len(category) else "",
+                "store": blank_if_none_word(store[i]) if i < len(store) else "",
+                "description": blank_if_none_word(description[i]) if i < len(description) else "",
+                "price": blank_if_none_word(price[i]) if i < len(price) else "",
+                "quantity": blank_if_none_word(quantity[i]) if i < len(quantity) else "",
+                "barcode": blank_if_none_word(barcode[i]) if i < len(barcode) else "",
+                "bin_code": blank_if_none_word(bin_code[i]) if i < len(bin_code) else "",
+            }
+            rows.append(row)
+
+            normalized_part_number = row["part_number"]
 
             if not normalized_part_number:
                 continue
 
-            p = Part(
-                part_number=normalized_part_number,
-                category=normalize_text(category[i]) if i < len(category) else None,
-                store=normalize_text(store[i]) if i < len(store) else None,
-                description=normalize_text(description[i]) if i < len(description) else None,
-                price=parse_price(price[i]) if i < len(price) else None,
-                quantity=parse_quantity(quantity[i]) if i < len(quantity) else 0,
-                notes=normalize_text(notes[i]) if i < len(notes) else None,
-                barcode=normalize_text(barcode[i]) if i < len(barcode) else None,
-                bin_code=normalize_text(bin_code[i]) if i < len(bin_code) else None,
-            )
-            session.add(p)
+            price_value = None
+            if row["price"]:
+                price_value = parse_price(row["price"])
+                if price_value is None:
+                    return render_error(f"Row {i + 1}: Invalid price '{row['price']}'.", rows)
+
+            quantity_value = 0
+            if row["quantity"]:
+                try:
+                    quantity_value = int(row["quantity"])
+                except ValueError:
+                    return render_error(f"Row {i + 1}: Invalid quantity '{row['quantity']}'.", rows)
+                if quantity_value < 0:
+                    return render_error(f"Row {i + 1}: Quantity cannot be negative.", rows)
+            else:
+                quantity_value = 0
+
+            existing_part = session.exec(
+                select(Part).where(Part.part_number == normalized_part_number)
+            ).first()
+
+            if existing_part:
+                existing_part.quantity = (existing_part.quantity or 0) + quantity_value
+                log_inventory_addition(existing_part, quantity_value, "Bulk add")
+                session.add(existing_part)
+            else:
+                p = Part(
+                    part_number=normalized_part_number,
+                    category=normalize_text(row["category"]),
+                    store=normalize_text(row["store"]),
+                    description=normalize_text(row["description"]),
+                    price=price_value,
+                    quantity=quantity_value,
+                    notes=normalize_text(notes[i]) if i < len(notes) else None,
+                    barcode=normalize_text(row["barcode"]),
+                    bin_code=normalize_text(row["bin_code"]),
+                )
+                log_inventory_addition(p, quantity_value, "Bulk add")
+                session.add(p)
+
+            any_saved = True
+
+        if not any_saved:
+            return render_error("Enter at least one part number.", rows)
 
         session.commit()
 
