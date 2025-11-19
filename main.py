@@ -5,6 +5,7 @@ from fastapi import FastAPI, Request, Form, HTTPException
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import func
 from sqlmodel import SQLModel, Field, Session, create_engine, select
 from starlette.status import HTTP_303_SEE_OTHER
 from datetime import datetime
@@ -20,6 +21,7 @@ engine = create_engine("sqlite:///data/parts.db", echo=True)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     SQLModel.metadata.create_all(engine)
+    migrate_legacy_notes()
     yield
 
 
@@ -42,6 +44,15 @@ class Part(SQLModel, table=True):
     notes: str | None = None        # UI label: "Project Used"
     barcode: str | None = None
     bin_code: str | None = None
+
+
+class UsageLog(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    part_id: int = Field(foreign_key="part.id")
+    action: str
+    detail: str | None = None
+    quantity_delta: int | None = None
+    created_at: datetime = Field(default_factory=datetime.now)
 
 
 class Category(SQLModel, table=True):
@@ -92,22 +103,53 @@ def blank_if_none_word(value: str | int | float | None) -> str:
     return "" if text.lower() == "none" else text
 
 
-def format_usage_log(prefix: str, detail: str | None = None) -> str:
-    timestamp = datetime.now().strftime("%m/%d/%Y %I:%M %p")
-    if detail:
-        return f"{prefix} on {timestamp}: {detail}"
-    return f"{prefix} on {timestamp}"
+def create_usage_entry(
+    session: Session,
+    part: Part,
+    action: str,
+    detail: str | None = None,
+    quantity_delta: int | None = None,
+) -> None:
+    entry = UsageLog(
+        part_id=part.id,
+        action=action,
+        detail=detail,
+        quantity_delta=quantity_delta,
+    )
+    session.add(entry)
 
 
-def append_note(part: "Part", entry: str) -> None:
-    part.notes = f"{part.notes}\n{entry}" if part.notes else entry
-
-
-def log_inventory_addition(part: "Part", amount: int, source: str | None = None) -> None:
+def log_inventory_addition(
+    session: Session, part: Part, amount: int, source: str | None = None
+) -> None:
     if amount <= 0:
         return
     detail = source.strip() if source else None
-    append_note(part, format_usage_log(f"Inventory added (+{amount})", detail))
+    create_usage_entry(
+        session, part, f"Inventory +{amount}", detail, quantity_delta=amount
+    )
+
+
+def log_part_usage(
+    session: Session, part: Part, action: str, detail: str | None, quantity_delta: int
+) -> None:
+    create_usage_entry(
+        session, part, action, detail.strip() if detail else None, quantity_delta
+    )
+
+
+def migrate_legacy_notes() -> None:
+    with Session(engine) as session:
+        parts_with_notes = session.exec(select(Part).where(Part.notes.is_not(None))).all()
+        if not parts_with_notes:
+            return
+        for part in parts_with_notes:
+            lines = [line.strip() for line in (part.notes or "").splitlines() if line.strip()]
+            for line in lines:
+                create_usage_entry(session, part, "Legacy entry", detail=line)
+            part.notes = None
+            session.add(part)
+        session.commit()
 
 
 # ============================================================
@@ -116,7 +158,29 @@ def log_inventory_addition(part: "Part", amount: int, source: str | None = None)
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    with Session(engine) as session:
+        total_parts = session.exec(select(func.count(Part.id))).one()
+        low_stock = session.exec(
+            select(func.count(Part.id)).where(Part.quantity <= 2)
+        ).one()
+        total_categories = session.exec(select(func.count(Category.id))).one()
+        recent_logs = (
+            session.exec(
+                select(UsageLog)
+                .order_by(UsageLog.created_at.desc())
+                .limit(5)
+            ).all()
+        )
+    return templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request,
+            "total_parts": total_parts,
+            "low_stock": low_stock,
+            "total_categories": total_categories,
+            "recent_logs": recent_logs,
+        },
+    )
 #Find page
 
 @app.get("/find", response_class=HTMLResponse)
@@ -158,7 +222,7 @@ def use_one_part(part_id: int, request: Request):
         if part.quantity > 0:
             part.quantity -= 1
 
-            append_note(part, format_usage_log("Used 1"))
+            log_part_usage(session, part, "Used 1", None, -1)
 
             session.add(part)
             session.commit()
@@ -255,9 +319,9 @@ def remove_one(part_id: int = Form(...), usage_note: str = Form("")):
 
         if part.quantity > 0:
             part.quantity -= 1
-            append_note(part, format_usage_log("Used 1", detail))
+            log_part_usage(session, part, "Used 1", detail, -1)
         elif detail:
-            append_note(part, format_usage_log("Usage note", detail))
+            log_part_usage(session, part, "Usage note", detail, 0)
 
         session.add(part)
         session.commit()
@@ -319,10 +383,10 @@ def add_part(
         notes=normalize_text(notes),
     )
 
-    log_inventory_addition(new_part, new_part.quantity, "Single add")
-
     with Session(engine) as session:
         session.add(new_part)
+        session.flush()
+        log_inventory_addition(session, new_part, new_part.quantity, "Single add")
         session.commit()
 
     return RedirectResponse("/parts", status_code=HTTP_303_SEE_OTHER)
@@ -435,7 +499,8 @@ def add_bulk(
 
             if existing_part:
                 existing_part.quantity = (existing_part.quantity or 0) + quantity_value
-                log_inventory_addition(existing_part, quantity_value, "Bulk add")
+                if quantity_value > 0:
+                    log_inventory_addition(session, existing_part, quantity_value, "Bulk add")
                 session.add(existing_part)
             else:
                 p = Part(
@@ -449,8 +514,10 @@ def add_bulk(
                     barcode=normalize_text(row["barcode"]),
                     bin_code=normalize_text(row["bin_code"]),
                 )
-                log_inventory_addition(p, quantity_value, "Bulk add")
                 session.add(p)
+                session.flush()
+                if quantity_value > 0:
+                    log_inventory_addition(session, p, quantity_value, "Bulk add")
 
             any_saved = True
 
@@ -535,28 +602,28 @@ def history_page(part_id: int, request: Request):
     with Session(engine) as session:
         part = session.get(Part, part_id)
 
-    lines = []
-    if part and part.notes:
-        lines = part.notes.splitlines()
+        if not part:
+            raise HTTPException(status_code=404, detail="Part not found")
+
+        logs = session.exec(
+            select(UsageLog)
+                .where(UsageLog.part_id == part_id)
+                .order_by(UsageLog.created_at.desc())
+        ).all()
 
     return templates.TemplateResponse(
         "history.html",
-        {"request": request, "part": part, "lines": lines},
+        {"request": request, "part": part, "logs": logs},
     )
 
 
 @app.post("/part/{part_id}/history/delete")
-def delete_history_entry(part_id: int, index: int = Form(...)):
+def delete_history_entry(part_id: int, log_id: int = Form(...)):
     with Session(engine) as session:
-        part = session.get(Part, part_id)
-
-        if part and part.notes:
-            lines = part.notes.splitlines()
-            if 0 <= index < len(lines):
-                lines.pop(index)
-                part.notes = "\n".join(lines) if lines else None
-                session.add(part)
-                session.commit()
+        entry = session.get(UsageLog, log_id)
+        if entry and entry.part_id == part_id:
+            session.delete(entry)
+            session.commit()
 
     return RedirectResponse(f"/part/{part_id}/history", status_code=HTTP_303_SEE_OTHER)
 
