@@ -208,6 +208,11 @@ def search_page(request: Request, q: str | None = None):
     )
 
 
+@app.get("/decoder", response_class=HTMLResponse)
+def decoder_page(request: Request):
+    return templates.TemplateResponse("decoder.html", {"request": request})
+
+
 # ============================================================
 # SCAN + RESULT
 # ============================================================

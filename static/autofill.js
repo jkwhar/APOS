@@ -98,6 +98,201 @@ function buildCapacitorDescription(lower) {
     return desc || null;
 }
 
+// ------------------------
+// Mechanical description builder
+// ------------------------
+const MECHANICAL_TYPE_DETAILS = {
+    hst: { label: "Heat Shrink", category: "Mechanical", specSuffix: "", joiner: " - " },
+    shrink: { label: "Heat Shrink", category: "Mechanical", specSuffix: "", joiner: " - " },
+    heatshrink: { label: "Heat Shrink", category: "Mechanical", specSuffix: "", joiner: " - " },
+    nut: { label: "Nut", category: "Mechanical", specSuffix: "", joiner: " " },
+    blt: { label: "Bolt", category: "Mechanical", specSuffix: "", joiner: " - " },
+    wsh: { label: "Washer", category: "Mechanical", specSuffix: " diameter", joiner: " " },
+    rng: { label: "O-Ring", category: "Mechanical", specSuffix: " diameter", joiner: " " },
+    spc: { label: "Spacer", category: "Mechanical", specSuffix: " diameter", joiner: " " },
+    stf: { label: "Standoff", category: "Mechanical", specSuffix: "", joiner: " - " },
+    standoff: { label: "Standoff", category: "Mechanical", specSuffix: "", joiner: " - " },
+    spacer: { label: "Spacer", category: "Mechanical", specSuffix: " diameter", joiner: " " },
+    washer: { label: "Washer", category: "Mechanical", specSuffix: " diameter", joiner: " " },
+    bearing: { label: "Bearing", category: "Mechanical", specSuffix: " diameter", joiner: " " },
+};
+
+const GENERIC_PREFIX_SKIP = new Set(["mec", "res", "cap", "ic", "mcu", "pcb", "asm"]);
+
+function normalizeToken(token) {
+    if (!token) return "";
+    let normalized = token.trim();
+    if (normalized.includes("_")) {
+        if (/^\d+(?:_\d+)+(?:in)?$/i.test(normalized)) {
+            normalized = normalized.replace(/_/g, "/");
+        } else {
+            normalized = normalized.replace(/_/g, " ");
+        }
+    }
+    return normalized;
+}
+
+function mmToInchesRounded(mm) {
+    const parsed = parseFloat(mm);
+    if (Number.isNaN(parsed)) return null;
+    return Math.round((parsed / 25.4) * 20) / 20;
+}
+
+function formatInches(inches, { stripLeadingZero = true } = {}) {
+    if (inches === null || inches === undefined) return "";
+    let str = inches.toFixed(2);
+
+    if (inches >= 1) {
+        str = str.replace(/(\.\d*[1-9])0$/, "$1").replace(/\.00$/, "");
+    }
+    if (stripLeadingZero && inches > 0 && inches < 1) {
+        str = str.replace(/^0/, "");
+    }
+
+    return `${str}"`;
+}
+
+function formatMechanicalSize(token, options = {}) {
+    const normalized = normalizeToken(token);
+    if (!normalized) return "";
+    const { sizeToken = false } = options;
+
+    if (/^\d+\/\d+$/i.test(normalized)) {
+        return `${normalized}"`;
+    }
+
+    if (/^\d+\/\d+in$/i.test(normalized)) {
+        const value = normalized.replace(/in$/i, "");
+        return `${value}"`;
+    }
+
+    if (/^\d+(mm|cm|m|in)$/i.test(normalized)) {
+        if (/in$/i.test(normalized)) {
+            return normalized.toUpperCase().replace(/IN$/i, '"');
+        }
+        const mm = parseFloat(normalized);
+        if (!Number.isNaN(mm)) {
+            return formatInches(mmToInchesRounded(mm));
+        }
+    }
+
+    if (/^\d+(?:\.\d+)?$/i.test(normalized)) {
+        if (sizeToken && /^\d+$/.test(normalized)) {
+            return `M${normalized}`;
+        }
+        return formatInches(mmToInchesRounded(normalized));
+    }
+
+    if (/^m\d+/i.test(normalized)) {
+        return normalized.toUpperCase();
+    }
+
+    return normalized.length <= 3
+        ? normalized.toUpperCase()
+        : normalized.charAt(0).toUpperCase() + normalized.slice(1).toLowerCase();
+}
+
+function formatMechanicalSpec(token) {
+    const normalized = normalizeToken(token);
+    if (!normalized) return "";
+
+    if (/^\d+(mm)?$/i.test(normalized)) {
+        return formatInches(mmToInchesRounded(normalized));
+    }
+
+    if (/^\d+\/\d+$/i.test(normalized)) {
+        return `${normalized}"`;
+    }
+
+    return formatMechanicalSize(token);
+}
+
+function buildMechanicalDescription(pn) {
+    if (!/^mec[-_]/i.test(pn)) return null;
+
+    const cleaned = pn.replace(/^mec[-_]?/i, "");
+    if (!cleaned) return null;
+
+    const segments = cleaned.split(/-/).map((t) => t.trim()).filter(Boolean);
+    if (!segments.length) return null;
+
+    const [rawType, ...rest] = segments;
+    const typeKey = rawType.toLowerCase();
+    const typeDetail = MECHANICAL_TYPE_DETAILS[typeKey];
+    const typeLabel = typeDetail?.label || formatMechanicalSize(rawType);
+
+    if (!rest.length) {
+        return {
+            description: typeLabel,
+            category: typeDetail?.category || null,
+        };
+    }
+
+    const sizeDesc = formatMechanicalSize(rest[0], { sizeToken: true });
+    const specTokens = rest.slice(1).map(formatMechanicalSpec).filter(Boolean);
+    let specDesc = specTokens.join(" ");
+
+    if (specDesc && typeDetail?.specSuffix) {
+        specDesc = `${specDesc}${typeDetail.specSuffix}`;
+    }
+
+    let description = typeLabel;
+    if (sizeDesc) {
+        description += ` ${sizeDesc}`;
+    }
+
+    if (specDesc) {
+        const joiner = typeDetail?.joiner ?? " ";
+        description += `${joiner}${specDesc}`;
+    }
+
+    return {
+        description: description.trim(),
+        category: typeDetail?.category || null,
+    };
+}
+
+function formatGeneralToken(token) {
+    const normalized = normalizeToken(token);
+    if (!normalized) return "";
+
+    if (/^\d+\/\d+$/i.test(normalized)) {
+        return `${normalized}"`;
+    }
+
+    if (/^\d+(mm|cm|in|ft)$/i.test(normalized)) {
+        return normalized.toUpperCase();
+    }
+
+    if (/^\d+$/i.test(normalized)) {
+        return normalized;
+    }
+
+    if (normalized.length <= 3) {
+        return normalized.toUpperCase();
+    }
+
+    return normalized.charAt(0).toUpperCase() + normalized.slice(1).toLowerCase();
+}
+
+function fallbackDescriptionFromPartNumber(pn) {
+    const tokens = pn.split(/[-_]/).map((t) => t.trim()).filter(Boolean);
+    if (!tokens.length) return "";
+
+    const filtered = tokens.filter((token, index) => {
+        if (index !== 0) return true;
+        return !GENERIC_PREFIX_SKIP.has(token.toLowerCase());
+    });
+
+    if (!filtered.length) return "";
+
+    return filtered
+        .map(formatGeneralToken)
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+}
+
 // =====================================================
 // MAIN ENTRY — AUTO FILL
 // =====================================================
@@ -121,6 +316,25 @@ function autoFillFromPartNumber(inputElem) {
 
     if (!descField || !catField) return;
 
+    const applyAutofill = (description, category) => {
+        if (description) {
+            descField.value = description;
+        }
+        if (category) {
+            setCategory(catField, category);
+        }
+        return true;
+    };
+
+    // ==============================
+    // Mechanical prefix (MEC-)
+    // ==============================
+    const mechanicalInfo = buildMechanicalDescription(pn);
+    if (mechanicalInfo) {
+        applyAutofill(mechanicalInfo.description, mechanicalInfo.category);
+        return;
+    }
+
     // ==============================
     // CAPACITOR RULES (robust)
     // ==============================
@@ -133,8 +347,7 @@ function autoFillFromPartNumber(inputElem) {
         if (volt) finalDesc += finalDesc ? ", " + volt : volt;
 
         if (finalDesc) {
-            descField.value = finalDesc;
-            setCategory(catField, "Capacitor");
+            applyAutofill(finalDesc, "Capacitor");
             return;
         }
     }
@@ -152,8 +365,10 @@ function autoFillFromPartNumber(inputElem) {
         let watt = extractWattage(pn);
         let tol  = extractTolerance(pn);
 
-        descField.value = `${value}${extra}${watt ? ", " + watt : ""}${tol ? ", " + tol : ""}`;
-        setCategory(catField, "Resistor");
+        applyAutofill(
+            `${value}${extra}${watt ? ", " + watt : ""}${tol ? ", " + tol : ""}`,
+            "Resistor"
+        );
         return;
     }
 
@@ -161,9 +376,19 @@ function autoFillFromPartNumber(inputElem) {
     // ESP32 / Modules
     // ==============================
     if (/esp32/i.test(pn)) {
-        descField.value = "ESP32 series microcontroller";
-        setCategory(catField, "MCU");
+        applyAutofill("ESP32 series microcontroller", "MCU");
         return;
+    }
+
+    // ==============================
+    // Generic fallback: humanize tokens
+    // ==============================
+    if (!descField.value) {
+        const fallbackDesc = fallbackDescriptionFromPartNumber(pn);
+        if (fallbackDesc) {
+            applyAutofill(fallbackDesc, null);
+            return;
+        }
     }
 
     // ----------------------------------------------
