@@ -44,22 +44,62 @@ function extractVoltage(pn) {
 // Helper: Format resistor values
 // ------------------------
 function formatResistor(val) {
-    // Examples:
-    // 4700 → 4K7
-    // 470 → 470R
-    val = val.toUpperCase();
+    const upper = val.toUpperCase();
+    const shorthandMatch = upper.match(/^(\d+)([RKM])(\d+)$/);
+    if (shorthandMatch) {
+        const leading = shorthandMatch[1];
+        const trailing = shorthandMatch[3];
+        const prefix = shorthandMatch[2] === "K" ? "k" : shorthandMatch[2] === "M" ? "M" : "";
+        const decimal = Number(`${leading}.${trailing}`);
+        return `${decimal}${prefix}Ω`;
+    }
 
-    if (val.endsWith("000")) return (parseInt(val) / 1000) + "K";
+    const numericMatch = upper.match(/^(\d+(\.\d+)?)([RKM])$/);
+    if (numericMatch) {
+        const value = parseFloat(numericMatch[1]);
+        const prefix = numericMatch[3] === "K" ? "k" : numericMatch[3] === "M" ? "M" : "";
+        return `${value}${prefix}Ω`;
+    }
 
-    if (parseInt(val) >= 1000)
-        return (parseInt(val) / 1000 + "").replace(".", "K");
+    const rMatch = upper.match(/^(\d+(\.\d+)?)R$/);
+    if (rMatch) {
+        return `${parseFloat(rMatch[1])}Ω`;
+    }
 
-    return val + "R";
+    const numeric = parseFloat(val);
+    if (!Number.isNaN(numeric)) {
+        if (numeric >= 1_000_000) {
+            return `${(numeric / 1_000_000).toFixed(2).replace(/\.00$/, "")}MΩ`;
+        }
+        if (numeric >= 1_000) {
+            return `${(numeric / 1_000).toFixed(2).replace(/\.00$/, "")}kΩ`;
+        }
+        return `${numeric}Ω`;
+    }
+
+    return val.replace(/R/i, "Ω");
 }
 
 // ------------------------
 // CAPACITOR VALUE PARSING
 // ------------------------
+function normalizeWattage(wattStr) {
+    if (!wattStr) return "";
+    const match = wattStr.match(/([\d.]+)/);
+    if (!match) return wattStr;
+    const numeric = parseFloat(match[1]);
+    if (Number.isNaN(numeric)) return wattStr;
+    const fractions = {
+        0.125: "1/8w",
+        0.25: "1/4w",
+        0.5: "1/2w",
+        0.75: "3/4w",
+    };
+    if (fractions[numeric]) return fractions[numeric];
+    if (Number.isInteger(numeric)) return `${numeric}w`;
+    return `${numeric}w`;
+}
+
 function parseCapacitance(raw) {
     if (!raw) return null;
     raw = raw.toLowerCase();
@@ -356,19 +396,18 @@ function autoFillFromPartNumber(inputElem) {
     // RESISTOR RULES
     // ==============================
     // Examples: RES-470R, RES-4K7, RES470R
-    let res = lower.match(/res[-_]?(\d+)([rRkK]\d+)?/);
-    if (res) {
-        let base = res[1];
-        let extra = res[2] || "";
+    const resistorMatch = pn.match(/res[-_]?([0-9a-z\.]+)/i);
+    if (resistorMatch) {
+        const valueToken = resistorMatch[1];
+        const formattedValue = formatResistor(valueToken);
+        const watt = normalizeWattage(extractWattage(pn));
+        const tolerance = extractTolerance(pn);
 
-        let value = parseCapacitance(base) || formatResistor(base);
-        let watt = extractWattage(pn);
-        let tol  = extractTolerance(pn);
+        const parts = [formattedValue];
+        if (watt) parts.push(watt);
+        if (tolerance) parts.push(tolerance);
 
-        applyAutofill(
-            `${value}${extra}${watt ? ", " + watt : ""}${tol ? ", " + tol : ""}`,
-            "Resistor"
-        );
+        applyAutofill(parts.join(", "), "Resistor");
         return;
     }
 
