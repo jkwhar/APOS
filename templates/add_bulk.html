@@ -120,16 +120,16 @@
 
                     <tbody>
                     {% for row in rows %}
-                        <tr>
+                        <tr class="{% if row.combine_info %}table-warning{% endif %}">
                             <td>
                                 <input type="text" name="part_number"
                                        class="form-control"
                                        value="{{ row.part_number }}"
                                        onblur="autoFillFromPartNumber(this)">
                             </td>
+                            {% if row.combine_info %}
                             <td class="text-start">
                                 <input type="hidden" name="combine_target" value="{{ row.combine_target or '' }}">
-                                {% if row.combine_info %}
                                 <div class="alert alert-warning small mb-0">
                                     {{ row.combine_info }}<br>
                                     <div class="form-check mt-2">
@@ -144,10 +144,13 @@
                                         </label>
                                     </div>
                                 </div>
-                                {% else %}
-                                <span class="text-muted small">—</span>
-                                {% endif %}
                             </td>
+                            {% else %}
+                            <td class="text-start">
+                                <input type="hidden" name="combine_target" value="">
+                                <span class="text-muted small">—</span>
+                            </td>
+                            {% endif %}
 
                             <td>
                                 <select name="category" class="form-select row_category">
