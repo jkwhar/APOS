@@ -59,6 +59,14 @@
                         </div>
                     </div>
                     <div class="col">
+                        <label class="form-label small text-muted mb-1">Manufacturer</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" id="batch_manufacturer" class="form-control form-control-sm" placeholder="e.g. Vishay">
+                            <button type="button" class="btn btn-outline-primary btn-sm"
+                                    onclick="applyBatchValue('batch_manufacturer', '.row_manufacturer')">Fill</button>
+                        </div>
+                    </div>
+                    <div class="col">
                         <label class="form-label small text-muted mb-1">Description</label>
                         <div class="input-group input-group-sm">
                             <input type="text" id="batch_description" class="form-control form-control-sm" placeholder="e.g. 3mm spacer">
@@ -110,6 +118,7 @@
                             <th class="text-start" style="width: 240px;">Combine?</th>
                             <th>Category</th>
                             <th>Store</th>
+                            <th>Manufacturer</th>
                             <th>Description</th>
                             <th>Price</th>
                             <th>Qty</th>
@@ -170,6 +179,11 @@
                                             {% if row.store == s.name %}selected{% endif %}>{{ s.name }}</option>
                                     {% endfor %}
                                 </select>
+                            </td>
+
+                            <td>
+                                <input type="text" name="manufacturer" class="form-control row_manufacturer"
+                                       value="{{ row.manufacturer }}">
                             </td>
 
                             <td>

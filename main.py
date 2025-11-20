@@ -18,9 +18,15 @@ os.makedirs("data", exist_ok=True)
 engine = create_engine("sqlite:///data/parts.db", echo=True)
 
 
+def get_session() -> Session:
+    # Prevent attribute expiration on commit so objects can be used after the session context
+    return Session(engine, expire_on_commit=False)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     SQLModel.metadata.create_all(engine)
+    ensure_manufacturer_column()
     migrate_legacy_notes()
     seed_initial_data()
     yield
@@ -39,6 +45,7 @@ class Part(SQLModel, table=True):
     part_number: str
     category: str | None = None     # category name
     store: str | None = None        # store name
+    manufacturer: str | None = None # manufacturer name
     description: str | None = None  # NEW: description
     price: float | None = None
     quantity: int = 0
@@ -85,6 +92,7 @@ DISPLAY_FIELD_DEFAULTS: list[tuple[str, str]] = [
     ("part_number", "Part Number"),
     ("category", "Category"),
     ("store", "Store"),
+    ("manufacturer", "Manufacturer"),
     ("description", "Description"),
     ("price", "Price"),
     ("quantity", "Quantity"),
@@ -137,7 +145,23 @@ def get_display_preferences(session: Session) -> list[DisplayPreference]:
         select(DisplayPreference).order_by(DisplayPreference.sort_order)
     ).all()
     if preferences:
-        return preferences
+        existing_fields = {pref.field_name for pref in preferences}
+        next_order = max((pref.sort_order for pref in preferences), default=-1) + 1
+        for field_name, label in DISPLAY_FIELD_DEFAULTS:
+            if field_name not in existing_fields:
+                session.add(
+                    DisplayPreference(
+                        field_name=field_name,
+                        label=label,
+                        sort_order=next_order,
+                        is_visible=True,
+                    )
+                )
+                next_order += 1
+        session.commit()
+        return session.exec(
+            select(DisplayPreference).order_by(DisplayPreference.sort_order)
+        ).all()
 
     for order, (field_name, label) in enumerate(DISPLAY_FIELD_DEFAULTS):
         session.add(
@@ -213,7 +237,7 @@ def log_part_usage(
 
 
 def migrate_legacy_notes() -> None:
-    with Session(engine) as session:
+    with get_session() as session:
         parts_with_notes = session.exec(select(Part).where(Part.notes.is_not(None))).all()
         if not parts_with_notes:
             return
@@ -238,7 +262,7 @@ def seed_initial_data() -> None:
     ]
     default_stores = ["Amazon", "Ebay"]
 
-    with Session(engine) as session:
+    with get_session() as session:
         existing_categories = {c.name.lower() for c in session.exec(select(Category)).all()}
         for name in default_categories:
             if name.lower() not in existing_categories:
@@ -253,13 +277,24 @@ def seed_initial_data() -> None:
         session.commit()
 
 
+def ensure_manufacturer_column() -> None:
+    with engine.connect() as conn:
+        columns = [
+            row[1].lower()
+            for row in conn.exec_driver_sql("PRAGMA table_info(part)").all()
+        ]
+        if "manufacturer" not in columns:
+            conn.exec_driver_sql("ALTER TABLE part ADD COLUMN manufacturer TEXT")
+            conn.commit()
+
+
 # ============================================================
 # HOME PAGE
 # ============================================================
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
-    with Session(engine) as session:
+    with get_session() as session:
         total_parts = session.exec(select(func.count(Part.id))).one()
         low_stock = session.exec(
             select(func.count(Part.id)).where(Part.quantity <= 2)
@@ -289,12 +324,13 @@ def find_parts(request: Request, query: str | None = None, barcode: str | None =
         return templates.TemplateResponse("find.html",
                                           {"request": request, "parts": [], "search_value": ""})
 
-    with Session(engine) as session:
+    with get_session() as session:
         stmt = select(Part).where(
             (Part.part_number.ilike(f"%{search_value}%")) |
             (Part.description.ilike(f"%{search_value}%")) |
             (Part.category.ilike(f"%{search_value}%")) |
             (Part.store.ilike(f"%{search_value}%")) |
+            (Part.manufacturer.ilike(f"%{search_value}%")) |
             (Part.barcode.ilike(f"%{search_value}%")) |
             (Part.bin_code.ilike(f"%{search_value}%"))
         )
@@ -316,7 +352,7 @@ def use_one_part(part_id: int, request: Request):
 
     referer = request.headers.get("referer", "/find")
 
-    with Session(engine) as session:
+    with get_session() as session:
         part = session.get(Part, part_id)
 
         if not part:
@@ -347,7 +383,7 @@ def parts_list(
     stock_value = None
     bin_value = (bin or "").strip() or None
 
-    with Session(engine) as session:
+    with get_session() as session:
         stmt = select(Part).order_by(Part.part_number)
         stmt = apply_inventory_filters(stmt, category_value, store_value, stock_value)
         if bin_value:
@@ -405,7 +441,7 @@ def search_page(
     stock_value = (stock or "").strip() or None
 
     results = []
-    with Session(engine) as session:
+    with get_session() as session:
         categories = session.exec(select(Category).order_by(Category.name)).all()
         stores = session.exec(select(Store).order_by(Store.name)).all()
         display_config = get_display_config(session)
@@ -416,6 +452,7 @@ def search_page(
                 (Part.part_number.ilike(pattern))
                 | (Part.category.ilike(pattern))
                 | (Part.store.ilike(pattern))
+                | (Part.manufacturer.ilike(pattern))
                 | (Part.description.ilike(pattern))
                 | (Part.barcode.ilike(pattern))
                 | (Part.bin_code.ilike(pattern))
@@ -446,7 +483,21 @@ def search_page(
 
 @app.get("/decoder", response_class=HTMLResponse)
 def decoder_page(request: Request):
-    return templates.TemplateResponse("decoder.html", {"request": request})
+    with get_session() as session:
+        categories = session.exec(select(Category).order_by(Category.name)).all()
+        prefix_entries = session.exec(select(CategoryPrefix)).all()
+    category_prefix_map = [
+        {"prefix": entry.prefix, "category": entry.category_name}
+        for entry in prefix_entries
+    ]
+    return templates.TemplateResponse(
+        "decoder.html",
+        {
+            "request": request,
+            "categories": categories,
+            "category_prefix_map": category_prefix_map,
+        },
+    )
 
 
 # ============================================================
@@ -460,7 +511,7 @@ def scan_page(request: Request):
 
 @app.get("/scan/result", response_class=HTMLResponse)
 def scan_result(request: Request, barcode: str):
-    with Session(engine) as session:
+    with get_session() as session:
         part = session.exec(select(Part).where(Part.barcode == barcode)).first()
 
     if not part:
@@ -479,7 +530,7 @@ def scan_result(request: Request, barcode: str):
 def remove_one(part_id: int = Form(...), usage_note: str = Form("")):
     barcode_value = None
 
-    with Session(engine) as session:
+    with get_session() as session:
         part = session.get(Part, part_id)
 
         if not part:
@@ -512,7 +563,7 @@ def remove_one(part_id: int = Form(...), usage_note: str = Form("")):
 
 @app.get("/add", response_class=HTMLResponse)
 def add_part_form(request: Request, barcode: str | None = None):
-    with Session(engine) as session:
+    with get_session() as session:
         categories = session.exec(select(Category)).all()
         stores = session.exec(select(Store)).all()
         prefix_entries = session.exec(select(CategoryPrefix)).all()
@@ -520,6 +571,7 @@ def add_part_form(request: Request, barcode: str | None = None):
         "part_number": "",
         "category": "",
         "store": "",
+        "manufacturer": "",
         "description": "",
         "price": "",
         "quantity": "0",
@@ -550,6 +602,7 @@ def add_part(
     part_number: str = Form(...),
     category: str = Form(""),
     store: str = Form(""),
+    manufacturer: str = Form(""),
     description: str = Form(""),
     price: str = Form(""),
     quantity: str = Form("0"),
@@ -564,6 +617,7 @@ def add_part(
 
     normalized_category = normalize_text(category)
     normalized_store = normalize_text(store)
+    normalized_manufacturer = normalize_text(manufacturer)
     normalized_description = normalize_text(description)
     normalized_barcode = normalize_text(barcode)
     normalized_bin = normalize_text(bin_code)
@@ -574,6 +628,7 @@ def add_part(
         "part_number": normalized_part_number,
         "category": normalized_category or "",
         "store": normalized_store or "",
+        "manufacturer": normalized_manufacturer or "",
         "description": description.strip(),
         "price": price.strip(),
         "quantity": quantity.strip() or "0",
@@ -585,6 +640,7 @@ def add_part(
         part_number=normalized_part_number,
         category=normalized_category,
         store=normalized_store,
+        manufacturer=normalized_manufacturer,
         description=normalized_description,
         price=parsed_price,
         quantity=parsed_quantity,
@@ -593,7 +649,7 @@ def add_part(
         notes=None,
     )
 
-    with Session(engine) as session:
+    with get_session() as session:
         combine_part = session.get(Part, combine_with) if combine_with else None
         if combine_with and not combine_part:
             raise HTTPException(status_code=400, detail="Invalid merge target")
@@ -659,7 +715,7 @@ def add_part(
 
 @app.get("/add/bulk", response_class=HTMLResponse)
 def add_bulk_form(request: Request):
-    with Session(engine) as session:
+    with get_session() as session:
         categories = session.exec(select(Category)).all()
         stores = session.exec(select(Store)).all()
         prefix_entries = session.exec(select(CategoryPrefix)).all()
@@ -668,6 +724,7 @@ def add_bulk_form(request: Request):
             "part_number": "",
             "category": "",
             "store": "",
+            "manufacturer": "",
             "description": "",
             "price": "",
             "quantity": "1",
@@ -704,6 +761,7 @@ def add_bulk(
     part_number: list[str] = Form(...),
     category: list[str] = Form([]),
     store: list[str] = Form([]),
+    manufacturer: list[str] = Form([]),
     description: list[str] = Form([]),
     price: list[str] = Form([]),
     quantity: list[str] = Form([]),
@@ -727,7 +785,7 @@ def add_bulk(
             status_code=400,
         )
 
-    with Session(engine) as session:
+    with get_session() as session:
         categories = session.exec(select(Category)).all()
         stores = session.exec(select(Store)).all()
         prefix_entries = session.exec(select(CategoryPrefix)).all()
@@ -748,6 +806,7 @@ def add_bulk(
                 "part_number": safe_str(part_number[i]).strip(),
                 "category": blank_if_none_word(category[i]) if i < len(category) else "",
                 "store": blank_if_none_word(store[i]) if i < len(store) else "",
+                "manufacturer": blank_if_none_word(manufacturer[i]) if i < len(manufacturer) else "",
                 "description": blank_if_none_word(description[i]) if i < len(description) else "",
                 "price": blank_if_none_word(price[i]) if i < len(price) else "",
                 "quantity": blank_if_none_word(quantity[i]) if i < len(quantity) else "",
@@ -785,6 +844,7 @@ def add_bulk(
 
             normalized_store = normalize_text(row["store"])
             normalized_bin = normalize_text(row["bin_code"])
+            normalized_manufacturer = normalize_text(row["manufacturer"])
 
             existing_part = session.exec(
                 select(Part).where(Part.part_number == normalized_part_number)
@@ -829,6 +889,7 @@ def add_bulk(
                     part_number=normalized_part_number,
                     category=normalize_text(row["category"]),
                     store=normalized_store,
+                    manufacturer=normalized_manufacturer,
                     description=normalize_text(row["description"]),
                     price=price_value,
                     quantity=quantity_value,
@@ -863,7 +924,7 @@ def add_bulk(
 
 @app.get("/part/{part_id}/edit", response_class=HTMLResponse)
 def edit_part_form(part_id: int, request: Request):
-    with Session(engine) as session:
+    with get_session() as session:
         part = session.get(Part, part_id)
         categories = session.exec(select(Category)).all()
         stores = session.exec(select(Store)).all()
@@ -880,6 +941,7 @@ def edit_part(
     part_number: str = Form(...),
     category: str = Form(""),
     store: str = Form(""),
+    manufacturer: str = Form(""),
     description: str = Form(""),
     price: str = Form(""),
     quantity: str = Form("0"),
@@ -887,7 +949,7 @@ def edit_part(
     bin_code: str = Form(""),
     notes: str = Form(""),
 ):
-    with Session(engine) as session:
+    with get_session() as session:
         part = session.get(Part, part_id)
         if part:
             normalized_part_number = part_number.strip()
@@ -898,6 +960,7 @@ def edit_part(
             part.part_number = normalized_part_number
             part.category = normalize_text(category)
             part.store = normalize_text(store)
+            part.manufacturer = normalize_text(manufacturer)
             part.description = normalize_text(description)
             part.price = parse_price(price)
             part.quantity = parse_quantity(quantity)
@@ -912,7 +975,7 @@ def edit_part(
 
 @app.post("/part/{part_id}/delete")
 def delete_part(part_id: int):
-    with Session(engine) as session:
+    with get_session() as session:
         part = session.get(Part, part_id)
         if part:
             session.delete(part)
@@ -927,7 +990,7 @@ def delete_part(part_id: int):
 
 @app.get("/part/{part_id}/history", response_class=HTMLResponse)
 def history_page(part_id: int, request: Request):
-    with Session(engine) as session:
+    with get_session() as session:
         part = session.get(Part, part_id)
 
         if not part:
@@ -947,7 +1010,7 @@ def history_page(part_id: int, request: Request):
 
 @app.post("/part/{part_id}/history/delete")
 def delete_history_entry(part_id: int, log_id: int = Form(...)):
-    with Session(engine) as session:
+    with get_session() as session:
         entry = session.get(UsageLog, log_id)
         if entry and entry.part_id == part_id:
             session.delete(entry)
@@ -962,7 +1025,7 @@ def delete_history_entry(part_id: int, log_id: int = Form(...)):
 
 @app.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request):
-    with Session(engine) as session:
+    with get_session() as session:
         categories = session.exec(select(Category)).all()
         stores = session.exec(select(Store)).all()
         category_prefixes = session.exec(select(CategoryPrefix)).all()
@@ -983,7 +1046,7 @@ def settings_page(request: Request):
 
 @app.post("/settings/category/add")
 def category_add(name: str = Form(...)):
-    with Session(engine) as session:
+    with get_session() as session:
         if name.strip():
             cat = Category(name=name.strip())
             session.add(cat)
@@ -993,7 +1056,7 @@ def category_add(name: str = Form(...)):
 
 @app.post("/settings/category/edit")
 def category_edit(cat_id: int = Form(...), name: str = Form(...)):
-    with Session(engine) as session:
+    with get_session() as session:
         cat = session.get(Category, cat_id)
         if cat and name.strip():
             cat.name = name.strip()
@@ -1004,7 +1067,7 @@ def category_edit(cat_id: int = Form(...), name: str = Form(...)):
 
 @app.post("/settings/category/delete")
 def category_delete(cat_id: int = Form(...)):
-    with Session(engine) as session:
+    with get_session() as session:
         cat = session.get(Category, cat_id)
         if cat:
             session.delete(cat)
@@ -1016,7 +1079,7 @@ def category_delete(cat_id: int = Form(...)):
 
 @app.post("/settings/store/add")
 def store_add(name: str = Form(...)):
-    with Session(engine) as session:
+    with get_session() as session:
         if name.strip():
             s = Store(name=name.strip())
             session.add(s)
@@ -1026,7 +1089,7 @@ def store_add(name: str = Form(...)):
 
 @app.post("/settings/store/edit")
 def store_edit(store_id: int = Form(...), name: str = Form(...)):
-    with Session(engine) as session:
+    with get_session() as session:
         s = session.get(Store, store_id)
         if s and name.strip():
             s.name = name.strip()
@@ -1037,7 +1100,7 @@ def store_edit(store_id: int = Form(...), name: str = Form(...)):
 
 @app.post("/settings/store/delete")
 def store_delete(store_id: int = Form(...)):
-    with Session(engine) as session:
+    with get_session() as session:
         s = session.get(Store, store_id)
         if s:
             session.delete(s)
@@ -1052,7 +1115,7 @@ def category_prefix_add(prefix: str = Form(...), category_name: str = Form(...))
     if not prefix_value or not category_value:
         return RedirectResponse("/settings", status_code=HTTP_303_SEE_OTHER)
 
-    with Session(engine) as session:
+    with get_session() as session:
         existing = session.exec(
             select(CategoryPrefix).where(func.lower(CategoryPrefix.prefix) == prefix_value.lower())
         ).first()
@@ -1069,7 +1132,7 @@ def category_prefix_add(prefix: str = Form(...), category_name: str = Form(...))
 
 @app.post("/settings/category_prefix/edit")
 def category_prefix_edit(map_id: int = Form(...), prefix: str = Form(...), category_name: str = Form(...)):
-    with Session(engine) as session:
+    with get_session() as session:
         mapping = session.get(CategoryPrefix, map_id)
         if mapping and prefix.strip() and category_name.strip():
             mapping.prefix = prefix.strip()
@@ -1081,7 +1144,7 @@ def category_prefix_edit(map_id: int = Form(...), prefix: str = Form(...), categ
 
 @app.post("/settings/category_prefix/delete")
 def category_prefix_delete(map_id: int = Form(...)):
-    with Session(engine) as session:
+    with get_session() as session:
         mapping = session.get(CategoryPrefix, map_id)
         if mapping:
             session.delete(mapping)
@@ -1093,7 +1156,7 @@ def category_prefix_delete(map_id: int = Form(...)):
 def update_display_fields(visible_fields: list[str] = Form([])):
     visible_set = {value.strip() for value in visible_fields if value.strip()}
 
-    with Session(engine) as session:
+    with get_session() as session:
         preferences = get_display_preferences(session)
         for pref in preferences:
             pref.is_visible = pref.field_name in visible_set

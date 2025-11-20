@@ -17,7 +17,7 @@
 
       <form action="/part/{{ part.id }}/edit" method="post" class="row g-3">
 
-        <div class="col-md-6">
+        <div class="col-md-4">
           <label class="form-label fw-semibold">Part Number</label>
           <input type="text" class="form-control" name="part_number" value="{{ part.part_number }}" required>
         </div>
@@ -32,7 +32,7 @@
           </select>
         </div>
 
-        <div class="col-md-6">
+        <div class="col-md-4">
           <label class="form-label fw-semibold">Store</label>
           <select name="store" class="form-select">
             <option value="">-- None --</option>
@@ -42,7 +42,12 @@
           </select>
         </div>
 
-        <div class="col-md-6">
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">Manufacturer</label>
+          <input type="text" class="form-control" name="manufacturer" value="{{ part.manufacturer }}">
+        </div>
+
+        <div class="col-md-4">
           <label class="form-label fw-semibold">Description</label>
           <input type="text" class="form-control" name="description" value="{{ part.description }}">
         </div>

@@ -47,7 +47,7 @@
                 <input type="text" name="barcode" class="form-control" value="{{ form_values.barcode }}">
             </div>
 
-            <div class="col-md-6">
+            <div class="col-md-4">
                 <label class="form-label">Category</label>
                 <select name="category" class="form-select">
                     <option value="">-- None --</option>
@@ -59,7 +59,7 @@
                 </select>
             </div>
 
-            <div class="col-md-6">
+            <div class="col-md-4">
                 <label class="form-label">Store</label>
                 <select name="store" class="form-select">
                     <option value="">-- None --</option>
@@ -69,6 +69,11 @@
                     </option>
                     {% endfor %}
                 </select>
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">Manufacturer</label>
+                <input type="text" name="manufacturer" class="form-control" value="{{ form_values.manufacturer }}">
             </div>
 
             <div class="col-12">
