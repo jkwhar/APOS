@@ -2,7 +2,7 @@ name: Build and push Docker image
 
 on:
   push:
-    branches: [ "v0.2" ]
+    branches: [ "v0.2.2" ]
 
 jobs:
   build-and-push:
