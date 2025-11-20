@@ -286,6 +286,45 @@ function formatMechanicalSpec(token) {
     return formatMechanicalSize(token);
 }
 
+function normalizeRatingToken(token) {
+    if (!token) return "";
+    const normalized = token.trim().toLowerCase();
+    if (!normalized) return "";
+    const match = normalized.match(/^(\d+(?:\.\d+)?)(kv|v|ma|a)$/);
+    if (!match) return "";
+    let [, value, unit] = match;
+    if (unit === "ma") {
+        unit = "mA";
+    } else if (unit === "kv") {
+        unit = "kV";
+    } else {
+        unit = unit.toUpperCase();
+    }
+    const normalizedValue = value.replace(/(\.\d*[1-9])0+$/, "$1").replace(/\.0+$/, "");
+    return `${normalizedValue}${unit}`;
+}
+
+function formatInductorValue(raw) {
+    if (!raw) return "";
+    let token = raw.trim().toLowerCase();
+    if (!token) return "";
+    token = token.replace(/h$/i, "").replace(/µ/g, "u");
+    if (/^\d+[mun]\d*$/i.test(token)) {
+        return token.toLowerCase();
+    }
+    const match = token.match(/^(\d+)(?:\.(\d+))?([mun])?$/);
+    if (!match) {
+        return token.toLowerCase();
+    }
+    const integer = match[1];
+    const decimal = match[2] || "";
+    const unit = match[3] || "u";
+    if (decimal) {
+        return `${integer}${unit}${decimal}`;
+    }
+    return `${integer}${unit}`;
+}
+
 function buildMechanicalDescription(pn) {
     if (!/^mec[-_]/i.test(pn)) return null;
 
@@ -330,6 +369,66 @@ function buildMechanicalDescription(pn) {
         description: description.trim(),
         category: typeDetail?.category || null,
         typeLabel,
+    };
+}
+
+function buildDiodeDescription(pn) {
+    if (!/^dio[-_]/i.test(pn)) return null;
+    const cleaned = pn.replace(/^dio[-_]?/i, "");
+    if (!cleaned) return null;
+    const segments = cleaned.split(/[-_]/).map((t) => t.trim()).filter(Boolean);
+    if (!segments.length) return null;
+    const value = segments[0].toUpperCase();
+    const rating = segments.slice(1).map(normalizeRatingToken).find(Boolean);
+    const parts = [value];
+    if (rating) parts.push(rating);
+    return {
+        description: parts.join(", "),
+        category: "Diode",
+    };
+}
+
+function buildTransistorDescription(pn) {
+    if (!/^trn[-_]/i.test(pn)) return null;
+    const cleaned = pn.replace(/^trn[-_]?/i, "");
+    if (!cleaned) return null;
+    const segments = cleaned.split(/[-_]/).map((t) => t.trim()).filter(Boolean);
+    if (!segments.length) return null;
+    const value = segments[0].toUpperCase();
+    const rating = segments.slice(1).map(normalizeRatingToken).find(Boolean);
+    const parts = [value];
+    if (rating) parts.push(rating);
+    return {
+        description: parts.join(", "),
+        category: "Transistor",
+    };
+}
+
+function buildInductorDescription(pn) {
+    if (!/^ind[-_]/i.test(pn)) return null;
+    const cleaned = pn.replace(/^ind[-_]?/i, "");
+    if (!cleaned) return null;
+    const segments = cleaned.split(/[-_]/).map((t) => t.trim()).filter(Boolean);
+    if (!segments.length) return null;
+    const valueToken = formatInductorValue(segments[0]);
+    if (!valueToken) return null;
+    const rating = segments.slice(1).map(normalizeRatingToken).find(Boolean);
+    const parts = [valueToken];
+    if (rating) parts.push(rating);
+    return {
+        description: parts.join(", "),
+        category: "Inductor",
+    };
+}
+
+function buildICDescription(pn) {
+    if (!/^ic[-_]/i.test(pn)) return null;
+    const cleaned = pn.replace(/^ic[-_]?/i, "");
+    const value = cleaned.trim();
+    if (!value) return null;
+    return {
+        description: value.toUpperCase(),
+        category: "IC",
     };
 }
 
@@ -476,6 +575,30 @@ function autoFillFromPartNumber(inputElem) {
         if (tolerance) parts.push(tolerance);
 
         applyAutofill(parts.join(", "), "Resistor");
+        return;
+    }
+
+    const diodeInfo = buildDiodeDescription(pn);
+    if (diodeInfo) {
+        applyAutofill(diodeInfo.description, diodeInfo.category);
+        return;
+    }
+
+    const transistorInfo = buildTransistorDescription(pn);
+    if (transistorInfo) {
+        applyAutofill(transistorInfo.description, transistorInfo.category);
+        return;
+    }
+
+    const inductorInfo = buildInductorDescription(pn);
+    if (inductorInfo) {
+        applyAutofill(inductorInfo.description, inductorInfo.category);
+        return;
+    }
+
+    const icInfo = buildICDescription(pn);
+    if (icInfo) {
+        applyAutofill(icInfo.description, icInfo.category);
         return;
     }
 

@@ -10,34 +10,6 @@
         <div class="d-flex justify-content-center gap-3">
             <a href="{{ url_for('parts_list') }}" class="btn btn-lg btn-primary">View Parts</a>
             <a href="{{ url_for('add_part_form') }}" class="btn btn-lg btn-outline-primary">Add New Part</a>
-            <a href="{{ url_for('scan_page') }}" class="btn btn-lg btn-outline-secondary">Scan</a>
-        </div>
-    </div>
-
-    <div class="row g-4 mb-4">
-        <div class="col-md-4">
-            <div class="card shadow-sm border-0 h-100">
-                <div class="card-body text-center">
-                    <div class="text-muted text-uppercase small">Total Parts</div>
-                    <div class="display-6">{{ total_parts }}</div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card shadow-sm border-0 h-100">
-                <div class="card-body text-center">
-                    <div class="text-muted text-uppercase small">Low Stock (&le;2)</div>
-                    <div class="display-6">{{ low_stock }}</div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card shadow-sm border-0 h-100">
-                <div class="card-body text-center">
-                    <div class="text-muted text-uppercase small">Categories</div>
-                    <div class="display-6">{{ total_categories }}</div>
-                </div>
-            </div>
         </div>
     </div>
 

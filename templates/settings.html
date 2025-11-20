@@ -5,185 +5,43 @@
 
 <h2 class="mb-4">Settings</h2>
 
-<div class="row g-4">
-    <div class="col-lg-6">
-        <div class="card h-100 shadow-sm">
-            <div class="card-header bg-primary text-white">
-        <h4 class="mb-0">Categories</h4>
+<div class="row g-3">
+    <div class="col-lg-4 col-md-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-primary text-white py-2">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Categories</h5>
+                    <span class="badge bg-light text-primary">{{ categories|length }}</span>
+                </div>
             </div>
             <div class="card-body">
-
-        <form action="/settings/category/add" method="post" class="row g-3 mb-4">
-            <div class="col-md-8">
-                <input type="text" name="name" class="form-control" placeholder="New category name" required>
-            </div>
-            <div class="col-md-4 text-end">
-                <button type="submit" class="btn btn-success">Add Category</button>
-            </div>
-        </form>
-
-        {% if categories %}
-        <div class="table-responsive">
-            <table class="table table-bordered table-striped align-middle">
-                <thead class="table-light">
-                    <tr>
-                        <th>ID</th>
-                        <th>Name</th>
-                        <th style="width: 180px;">Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                {% for cat in categories %}
-                    <tr>
-                        <td>{{ cat.id }}</td>
-                        <td>
-                            <form action="/settings/category/edit" method="post" class="d-flex">
-                                <input type="hidden" name="cat_id" value="{{ cat.id }}">
-                                <input type="text" name="name" value="{{ cat.name }}" class="form-control me-2">
-                                <button type="submit" class="btn btn-warning btn-sm">Save</button>
-                            </form>
-                        </td>
-                        <td>
-                            <form action="/settings/category/delete" method="post" class="d-inline"
-                                  onsubmit="return confirm('Delete this category?');">
-                                <input type="hidden" name="cat_id" value="{{ cat.id }}">
-                                <button type="submit" class="btn btn-danger btn-sm">Delete</button>
-                            </form>
-                        </td>
-                    </tr>
-                {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% else %}
-            <p class="text-muted">No categories yet.</p>
-        {% endif %}
-
-            </div>
-        </div>
-    </div>
-    <div class="col-lg-6">
-        <div class="card h-100 shadow-sm">
-            <div class="card-header bg-secondary text-white">
-        <h4 class="mb-0">Stores</h4>
-            </div>
-            <div class="card-body">
-        <form action="/settings/store/add" method="post" class="row g-3 mb-4">
-            <div class="col-md-8">
-                <input type="text" name="name" class="form-control" placeholder="New store name" required>
-            </div>
-            <div class="col-md-4 text-end">
-                <button type="submit" class="btn btn-success">Add Store</button>
-            </div>
-        </form>
-
-        {% if stores %}
-        <div class="table-responsive">
-            <table class="table table-bordered table-striped align-middle">
-                <thead class="table-light">
-                    <tr>
-                        <th>ID</th>
-                        <th>Name</th>
-                        <th style="width: 180px;">Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                {% for s in stores %}
-                    <tr>
-                        <td>{{ s.id }}</td>
-                        <td>
-                            <form action="/settings/store/edit" method="post" class="d-flex">
-                                <input type="hidden" name="store_id" value="{{ s.id }}">
-                                <input type="text" name="name" value="{{ s.name }}" class="form-control me-2">
-                                <button type="submit" class="btn btn-warning btn-sm">Save</button>
-                            </form>
-                        </td>
-                        <td>
-                            <form action="/settings/store/delete" method="post" class="d-inline"
-                                  onsubmit="return confirm('Delete this store?');">
-                                <input type="hidden" name="store_id" value="{{ s.id }}">
-                                <button type="submit" class="btn btn-danger btn-sm">Delete</button>
-                            </form>
-                        </td>
-                    </tr>
-                {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% else %}
-            <p class="text-muted">No stores yet.</p>
-        {% endif %}
-
-            </div>
-        </div>
-    </div>
-
-    <div class="col-12">
-        <div class="card shadow-sm">
-            <div class="card-header bg-info text-white">
-                <h4 class="mb-0">Category Prefix Mapping</h4>
-            </div>
-            <div class="card-body">
-                <p class="text-muted small">
-                    Define custom prefixes (e.g., <code>MEC-WSH</code>) that should automatically select a category when adding parts.
-                </p>
-
-                <form action="/settings/category_prefix/add" method="post" class="row g-3 align-items-end mb-4">
-                    <div class="col-md-4">
-                        <label class="form-label">Part Prefix</label>
-                        <input type="text" name="prefix" class="form-control" placeholder="e.g. MEC-WSH" required>
+                <form action="/settings/category/add" method="post" class="row g-2 align-items-center mb-3">
+                    <div class="col-8">
+                        <input type="text" name="name" class="form-control form-control-sm" placeholder="New category" required>
                     </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Category</label>
-                        <select name="category_name" class="form-select" required>
-                            {% for cat in categories %}
-                            <option value="{{ cat.name }}">{{ cat.name }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-md-4 text-end">
-                        <button type="submit" class="btn btn-success mt-3 mt-md-0">Add Mapping</button>
+                    <div class="col-4 text-end">
+                        <button type="submit" class="btn btn-success btn-sm w-100">Add</button>
                     </div>
                 </form>
 
-                {% if category_prefixes %}
-                <div class="table-responsive">
-                    <table class="table table-bordered align-middle">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Prefix</th>
-                                <th>Category</th>
-                                <th style="width: 220px;">Actions</th>
-                            </tr>
-                        </thead>
+                {% if categories %}
+                <div class="table-responsive small">
+                    <table class="table table-sm align-middle mb-0">
                         <tbody>
-                        {% for mapping in category_prefixes %}
+                        {% for cat in categories %}
                             <tr>
-                                <td colspan="2">
-                                    <form action="/settings/category_prefix/edit" method="post" class="row g-2 align-items-center">
-                                        <input type="hidden" name="map_id" value="{{ mapping.id }}">
-                                        <div class="col-md-6">
-                                            <input type="text" name="prefix" value="{{ mapping.prefix }}" class="form-control" required>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <select name="category_name" class="form-select" required>
-                                                {% for cat in categories %}
-                                                <option value="{{ cat.name }}" {% if cat.name == mapping.category_name %}selected{% endif %}>
-                                                    {{ cat.name }}
-                                                </option>
-                                                {% endfor %}
-                                            </select>
-                                        </div>
-                                        <div class="col-12 text-end mt-2">
-                                            <button type="submit" class="btn btn-warning btn-sm">Save</button>
-                                        </div>
+                                <td>
+                                    <form action="/settings/category/edit" method="post" class="d-flex gap-2 align-items-center">
+                                        <input type="hidden" name="cat_id" value="{{ cat.id }}">
+                                        <input type="text" name="name" class="form-control form-control-sm" value="{{ cat.name }}">
+                                        <button type="submit" class="btn btn-outline-secondary btn-sm">Save</button>
                                     </form>
                                 </td>
-                                <td class="text-center">
-                                    <form action="/settings/category_prefix/delete" method="post"
-                                          onsubmit="return confirm('Delete this mapping?');">
-                                        <input type="hidden" name="map_id" value="{{ mapping.id }}">
-                                        <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                                <td class="text-end" style="width: 60px;">
+                                    <form action="/settings/category/delete" method="post"
+                                          onsubmit="return confirm('Delete this category?');">
+                                        <input type="hidden" name="cat_id" value="{{ cat.id }}">
+                                        <button type="submit" class="btn btn-link btn-sm text-danger p-0">✕</button>
                                     </form>
                                 </td>
                             </tr>
@@ -192,7 +50,134 @@
                     </table>
                 </div>
                 {% else %}
-                    <p class="text-muted mb-0">No custom mappings yet.</p>
+                    <p class="text-muted small mb-0">No categories yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4 col-md-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-secondary text-white py-2">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Stores</h5>
+                    <span class="badge bg-light text-secondary">{{ stores|length }}</span>
+                </div>
+            </div>
+            <div class="card-body">
+                <form action="/settings/store/add" method="post" class="row g-2 align-items-center mb-3">
+                    <div class="col-8">
+                        <input type="text" name="name" class="form-control form-control-sm" placeholder="New store" required>
+                    </div>
+                    <div class="col-4 text-end">
+                        <button type="submit" class="btn btn-success btn-sm w-100">Add</button>
+                    </div>
+                </form>
+
+                {% if stores %}
+                <div class="table-responsive small">
+                    <table class="table table-sm align-middle mb-0">
+                        <tbody>
+                        {% for s in stores %}
+                            <tr>
+                                <td>
+                                    <form action="/settings/store/edit" method="post" class="d-flex gap-2 align-items-center">
+                                        <input type="hidden" name="store_id" value="{{ s.id }}">
+                                        <input type="text" name="name" class="form-control form-control-sm" value="{{ s.name }}">
+                                        <button type="submit" class="btn btn-outline-secondary btn-sm">Save</button>
+                                    </form>
+                                </td>
+                                <td class="text-end" style="width: 60px;">
+                                    <form action="/settings/store/delete" method="post"
+                                          onsubmit="return confirm('Delete this store?');">
+                                        <input type="hidden" name="store_id" value="{{ s.id }}">
+                                        <button type="submit" class="btn btn-link btn-sm text-danger p-0">✕</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                    <p class="text-muted small mb-0">No stores yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4 col-md-12">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-info text-white py-2">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Prefix Mapping</h5>
+                    <span class="badge bg-light text-info">{{ category_prefixes|length }}</span>
+                </div>
+            </div>
+            <div class="card-body">
+                <form action="/settings/category_prefix/add" method="post" class="row g-2 align-items-center mb-3">
+                    <div class="col-5">
+                        <input type="text" name="prefix" class="form-control form-control-sm" placeholder="e.g. MEC-WSH" required>
+                    </div>
+                    <div class="col-5">
+                        <select name="category_name" class="form-select form-select-sm" required>
+                            {% for cat in categories %}
+                            <option value="{{ cat.name }}">{{ cat.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-2 text-end">
+                        <button type="submit" class="btn btn-success btn-sm w-100">Add</button>
+                    </div>
+                </form>
+
+                {% if category_prefixes %}
+                <div class="table-responsive small">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Prefix</th>
+                                <th>Category</th>
+                                <th style="width: 60px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for mapping in category_prefixes %}
+                            <tr>
+                                <td colspan="2">
+                                    <form action="/settings/category_prefix/edit" method="post" class="row g-1 align-items-center">
+                                        <input type="hidden" name="map_id" value="{{ mapping.id }}">
+                                        <div class="col-sm-5 col-12">
+                                            <input type="text" name="prefix" value="{{ mapping.prefix }}" class="form-control form-control-sm" required>
+                                        </div>
+                                        <div class="col-sm-5 col-12">
+                                            <select name="category_name" class="form-select form-select-sm" required>
+                                                {% for cat in categories %}
+                                                <option value="{{ cat.name }}" {% if cat.name == mapping.category_name %}selected{% endif %}>
+                                                    {{ cat.name }}
+                                                </option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                        <div class="col-sm-2 col-12 text-end">
+                                            <button type="submit" class="btn btn-outline-secondary btn-sm w-100">Save</button>
+                                        </div>
+                                    </form>
+                                </td>
+                                <td class="text-end">
+                                    <form action="/settings/category_prefix/delete" method="post"
+                                          onsubmit="return confirm('Delete this mapping?');">
+                                        <input type="hidden" name="map_id" value="{{ mapping.id }}">
+                                        <button type="submit" class="btn btn-link btn-sm text-danger p-0">✕</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                    <p class="text-muted small mb-0">No custom mappings yet.</p>
                 {% endif %}
             </div>
         </div>
