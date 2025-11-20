@@ -5,6 +5,7 @@ from fastapi import FastAPI, Request, Form, HTTPException
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import func, or_
 from sqlmodel import SQLModel, Field, Session, create_engine, select
 from starlette.status import HTTP_303_SEE_OTHER
 from datetime import datetime
@@ -20,6 +21,8 @@ engine = create_engine("sqlite:///data/parts.db", echo=True)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     SQLModel.metadata.create_all(engine)
+    migrate_legacy_notes()
+    seed_initial_data()
     yield
 
 
@@ -44,6 +47,15 @@ class Part(SQLModel, table=True):
     bin_code: str | None = None
 
 
+class UsageLog(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    part_id: int = Field(foreign_key="part.id")
+    action: str
+    detail: str | None = None
+    quantity_delta: int | None = None
+    created_at: datetime = Field(default_factory=datetime.now)
+
+
 class Category(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     name: str
@@ -52,6 +64,34 @@ class Category(SQLModel, table=True):
 class Store(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     name: str
+
+
+class CategoryPrefix(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    prefix: str
+    category_name: str
+
+
+class DisplayPreference(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    field_name: str
+    label: str
+    is_visible: bool = Field(default=True)
+    sort_order: int = Field(default=0)
+
+
+DISPLAY_FIELD_DEFAULTS: list[tuple[str, str]] = [
+    ("id", "ID"),
+    ("part_number", "Part Number"),
+    ("category", "Category"),
+    ("store", "Store"),
+    ("description", "Description"),
+    ("price", "Price"),
+    ("quantity", "Quantity"),
+    ("barcode", "Barcode"),
+    ("bin_code", "Bin"),
+    ("usage", "Usage/History"),
+]
 
 
 def safe_str(value: str | int | float | None) -> str:
@@ -87,15 +127,130 @@ def parse_quantity(value: str | int | float | None) -> int:
     return max(quantity, 0)
 
 
-def format_usage_log(prefix: str, detail: str | None = None) -> str:
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    if detail:
-        return f"{prefix} on {timestamp}: {detail}"
-    return f"{prefix} on {timestamp}"
+def blank_if_none_word(value: str | int | float | None) -> str:
+    text = safe_str(value).strip()
+    return "" if text.lower() == "none" else text
 
 
-def append_note(part: "Part", entry: str) -> None:
-    part.notes = f"{part.notes}\n{entry}" if part.notes else entry
+def get_display_preferences(session: Session) -> list[DisplayPreference]:
+    preferences = session.exec(
+        select(DisplayPreference).order_by(DisplayPreference.sort_order)
+    ).all()
+    if preferences:
+        return preferences
+
+    for order, (field_name, label) in enumerate(DISPLAY_FIELD_DEFAULTS):
+        session.add(
+            DisplayPreference(
+                field_name=field_name,
+                label=label,
+                sort_order=order,
+                is_visible=True,
+            )
+        )
+    session.commit()
+    return session.exec(
+        select(DisplayPreference).order_by(DisplayPreference.sort_order)
+    ).all()
+
+
+def get_display_config(session: Session) -> dict[str, bool]:
+    preferences = get_display_preferences(session)
+    return {pref.field_name: pref.is_visible for pref in preferences}
+
+
+def apply_inventory_filters(
+    stmt, category_value: str | None, store_value: str | None, stock_filter: str | None
+):
+    if category_value:
+        stmt = stmt.where(Part.category == category_value)
+    if store_value:
+        stmt = stmt.where(Part.store == store_value)
+
+    if stock_filter == "low":
+        stmt = stmt.where(or_(Part.quantity <= 2, Part.quantity.is_(None)))
+    elif stock_filter == "in":
+        stmt = stmt.where(Part.quantity > 0)
+    elif stock_filter == "out":
+        stmt = stmt.where(or_(Part.quantity <= 0, Part.quantity.is_(None)))
+
+    return stmt
+
+
+def create_usage_entry(
+    session: Session,
+    part: Part,
+    action: str,
+    detail: str | None = None,
+    quantity_delta: int | None = None,
+) -> None:
+    entry = UsageLog(
+        part_id=part.id,
+        action=action,
+        detail=detail,
+        quantity_delta=quantity_delta,
+    )
+    session.add(entry)
+
+
+def log_inventory_addition(
+    session: Session, part: Part, amount: int, source: str | None = None
+) -> None:
+    if amount <= 0:
+        return
+    detail = source.strip() if source else None
+    create_usage_entry(
+        session, part, f"Inventory +{amount}", detail, quantity_delta=amount
+    )
+
+
+def log_part_usage(
+    session: Session, part: Part, action: str, detail: str | None, quantity_delta: int
+) -> None:
+    create_usage_entry(
+        session, part, action, detail.strip() if detail else None, quantity_delta
+    )
+
+
+def migrate_legacy_notes() -> None:
+    with Session(engine) as session:
+        parts_with_notes = session.exec(select(Part).where(Part.notes.is_not(None))).all()
+        if not parts_with_notes:
+            return
+        for part in parts_with_notes:
+            lines = [line.strip() for line in (part.notes or "").splitlines() if line.strip()]
+            for line in lines:
+                create_usage_entry(session, part, "Legacy entry", detail=line)
+            part.notes = None
+            session.add(part)
+        session.commit()
+
+
+def seed_initial_data() -> None:
+    default_categories = [
+        "Capacitor",
+        "Resistor",
+        "Nuts",
+        "Bolts",
+        "Washers",
+        "Screws",
+        "Heat Shrinks",
+    ]
+    default_stores = ["Amazon", "Ebay"]
+
+    with Session(engine) as session:
+        existing_categories = {c.name.lower() for c in session.exec(select(Category)).all()}
+        for name in default_categories:
+            if name.lower() not in existing_categories:
+                session.add(Category(name=name))
+
+        existing_stores = {s.name.lower() for s in session.exec(select(Store)).all()}
+        for name in default_stores:
+            if name.lower() not in existing_stores:
+                session.add(Store(name=name))
+
+        get_display_preferences(session)
+        session.commit()
 
 
 # ============================================================
@@ -104,7 +259,25 @@ def append_note(part: "Part", entry: str) -> None:
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    with Session(engine) as session:
+        total_parts = session.exec(select(func.count(Part.id))).one()
+        low_stock = session.exec(
+            select(func.count(Part.id)).where(Part.quantity <= 2)
+        ).one()
+        total_categories = session.exec(select(func.count(Category.id))).one()
+        low_inventory_parts = session.exec(
+            select(Part).where(Part.quantity <= 2).order_by(Part.quantity, Part.part_number)
+        ).all()
+    return templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request,
+            "total_parts": total_parts,
+            "low_stock": low_stock,
+            "total_categories": total_categories,
+            "low_inventory_parts": low_inventory_parts,
+        },
+    )
 #Find page
 
 @app.get("/find", response_class=HTMLResponse)
@@ -126,9 +299,15 @@ def find_parts(request: Request, query: str | None = None, barcode: str | None =
             (Part.bin_code.ilike(f"%{search_value}%"))
         )
         parts = session.exec(stmt).all()
+        display_config = get_display_config(session)
 
     return templates.TemplateResponse("find.html",
-                                      {"request": request, "parts": parts, "search_value": search_value})
+                                      {
+                                          "request": request,
+                                          "parts": parts,
+                                          "search_value": search_value,
+                                          "display_config": display_config,
+                                      })
 
 # consume route
 
@@ -146,7 +325,7 @@ def use_one_part(part_id: int, request: Request):
         if part.quantity > 0:
             part.quantity -= 1
 
-            append_note(part, format_usage_log("Used 1"))
+            log_part_usage(session, part, "Used 1", None, -1)
 
             session.add(part)
             session.commit()
@@ -157,10 +336,55 @@ def use_one_part(part_id: int, request: Request):
 # ============================================================
 
 @app.get("/parts", response_class=HTMLResponse)
-def parts_list(request: Request):
+def parts_list(
+    request: Request,
+    category: str | None = None,
+    store: str | None = None,
+    bin: str | None = None,
+):
+    category_value = (category or "").strip() or None
+    store_value = (store or "").strip() or None
+    stock_value = None
+    bin_value = (bin or "").strip() or None
+
     with Session(engine) as session:
-        parts = session.exec(select(Part)).all()
-    return templates.TemplateResponse("parts.html", {"request": request, "parts": parts})
+        stmt = select(Part).order_by(Part.part_number)
+        stmt = apply_inventory_filters(stmt, category_value, store_value, stock_value)
+        if bin_value:
+            stmt = stmt.where(Part.bin_code.ilike(f"%{bin_value}%"))
+        parts = session.exec(stmt).all()
+        categories = session.exec(select(Category).order_by(Category.name)).all()
+        stores = session.exec(select(Store).order_by(Store.name)).all()
+        bin_options = [
+            value
+            for value in session.exec(
+                select(Part.bin_code)
+                .where(Part.bin_code.is_not(None))
+                .group_by(Part.bin_code)
+                .order_by(Part.bin_code)
+            )
+            if value
+        ]
+        display_config = get_display_config(session)
+
+    filters = {
+        "category": category_value or "",
+        "store": store_value or "",
+        "bin": bin_value or "",
+    }
+
+    return templates.TemplateResponse(
+        "parts.html",
+        {
+            "request": request,
+            "parts": parts,
+            "categories": categories,
+            "stores": stores,
+            "bin_options": bin_options,
+            "filters": filters,
+            "display_config": display_config,
+        },
+    )
 
 
 # ============================================================
@@ -168,13 +392,26 @@ def parts_list(request: Request):
 # ============================================================
 
 @app.get("/search", response_class=HTMLResponse)
-def search_page(request: Request, q: str | None = None):
-    results = []
+def search_page(
+    request: Request,
+    q: str | None = None,
+    category: str | None = None,
+    store: str | None = None,
+    stock: str | None = None,
+):
     query = (q or "").strip()
+    category_value = (category or "").strip() or None
+    store_value = (store or "").strip() or None
+    stock_value = (stock or "").strip() or None
 
-    if query:
-        pattern = f"%{query}%"
-        with Session(engine) as session:
+    results = []
+    with Session(engine) as session:
+        categories = session.exec(select(Category).order_by(Category.name)).all()
+        stores = session.exec(select(Store).order_by(Store.name)).all()
+        display_config = get_display_config(session)
+
+        if query:
+            pattern = f"%{query}%"
             stmt = select(Part).where(
                 (Part.part_number.ilike(pattern))
                 | (Part.category.ilike(pattern))
@@ -184,7 +421,14 @@ def search_page(request: Request, q: str | None = None):
                 | (Part.bin_code.ilike(pattern))
                 | (Part.notes.ilike(pattern))
             )
+            stmt = apply_inventory_filters(stmt, category_value, store_value, stock_value)
             results = session.exec(stmt).all()
+
+    filters = {
+        "category": category_value or "",
+        "store": store_value or "",
+        "stock": stock_value or "",
+    }
 
     return templates.TemplateResponse(
         "search.html",
@@ -192,8 +436,17 @@ def search_page(request: Request, q: str | None = None):
             "request": request,
             "q": query,
             "results": results,
+            "categories": categories,
+            "stores": stores,
+            "filters": filters,
+            "display_config": display_config,
         },
     )
+
+
+@app.get("/decoder", response_class=HTMLResponse)
+def decoder_page(request: Request):
+    return templates.TemplateResponse("decoder.html", {"request": request})
 
 
 # ============================================================
@@ -238,9 +491,9 @@ def remove_one(part_id: int = Form(...), usage_note: str = Form("")):
 
         if part.quantity > 0:
             part.quantity -= 1
-            append_note(part, format_usage_log("Used 1", detail))
+            log_part_usage(session, part, "Used 1", detail, -1)
         elif detail:
-            append_note(part, format_usage_log("Usage note", detail))
+            log_part_usage(session, part, "Usage note", detail, 0)
 
         session.add(part)
         session.commit()
@@ -262,6 +515,21 @@ def add_part_form(request: Request, barcode: str | None = None):
     with Session(engine) as session:
         categories = session.exec(select(Category)).all()
         stores = session.exec(select(Store)).all()
+        prefix_entries = session.exec(select(CategoryPrefix)).all()
+    form_values = {
+        "part_number": "",
+        "category": "",
+        "store": "",
+        "description": "",
+        "price": "",
+        "quantity": "0",
+        "barcode": barcode or "",
+        "bin_code": "",
+    }
+    category_prefix_map = [
+        {"prefix": entry.prefix, "category": entry.category_name}
+        for entry in prefix_entries
+    ]
     return templates.TemplateResponse(
         "add_part.html",
         {
@@ -269,6 +537,10 @@ def add_part_form(request: Request, barcode: str | None = None):
             "barcode": barcode,
             "categories": categories,
             "stores": stores,
+            "category_prefix_map": category_prefix_map,
+            "form_values": form_values,
+            "combine_candidate": None,
+            "combine_warning": None,
         },
     )
 
@@ -283,27 +555,99 @@ def add_part(
     quantity: str = Form("0"),
     barcode: str = Form(""),
     bin_code: str = Form(""),
-    notes: str = Form(""),
+    combine_with: int | None = Form(None),
 ):
     normalized_part_number = part_number.strip()
 
     if not normalized_part_number:
         raise HTTPException(status_code=400, detail="Part number is required")
 
+    normalized_category = normalize_text(category)
+    normalized_store = normalize_text(store)
+    normalized_description = normalize_text(description)
+    normalized_barcode = normalize_text(barcode)
+    normalized_bin = normalize_text(bin_code)
+    parsed_price = parse_price(price)
+    parsed_quantity = parse_quantity(quantity)
+
+    form_values = {
+        "part_number": normalized_part_number,
+        "category": normalized_category or "",
+        "store": normalized_store or "",
+        "description": description.strip(),
+        "price": price.strip(),
+        "quantity": quantity.strip() or "0",
+        "barcode": barcode.strip(),
+        "bin_code": bin_code.strip(),
+    }
+
     new_part = Part(
         part_number=normalized_part_number,
-        category=normalize_text(category),
-        store=normalize_text(store),
-        description=normalize_text(description),
-        price=parse_price(price),
-        quantity=parse_quantity(quantity),
-        barcode=normalize_text(barcode),
-        bin_code=normalize_text(bin_code),
-        notes=normalize_text(notes),
+        category=normalized_category,
+        store=normalized_store,
+        description=normalized_description,
+        price=parsed_price,
+        quantity=parsed_quantity,
+        barcode=normalized_barcode,
+        bin_code=normalized_bin,
+        notes=None,
     )
 
     with Session(engine) as session:
+        combine_part = session.get(Part, combine_with) if combine_with else None
+        if combine_with and not combine_part:
+            raise HTTPException(status_code=400, detail="Invalid merge target")
+
+        if combine_part:
+            if combine_part.part_number != normalized_part_number:
+                raise HTTPException(status_code=400, detail="Part mismatch for merge")
+            amount = parsed_quantity
+            if amount > 0:
+                combine_part.quantity = (combine_part.quantity or 0) + amount
+                log_inventory_addition(session, combine_part, amount, "Single add (merge)")
+                session.add(combine_part)
+                session.commit()
+            return RedirectResponse("/parts", status_code=HTTP_303_SEE_OTHER)
+
+        existing_part = session.exec(
+            select(Part).where(Part.part_number == normalized_part_number)
+        ).first()
+
+        if existing_part:
+            existing_store = existing_part.store or ""
+            existing_bin = existing_part.bin_code or ""
+            new_store_value = normalized_store or ""
+            new_bin_value = normalized_bin or ""
+            if existing_store != new_store_value or existing_bin != new_bin_value:
+                categories = session.exec(select(Category)).all()
+                stores = session.exec(select(Store)).all()
+                prefix_entries = session.exec(select(CategoryPrefix)).all()
+                category_prefix_map = [
+                    {"prefix": entry.prefix, "category": entry.category_name}
+                    for entry in prefix_entries
+                ]
+                warning_message = (
+                    f"Existing record uses Store '{existing_store or '—'}' and Bin '{existing_bin or '—'}'. "
+                    "Combining will keep that information and only add the quantity you entered."
+                )
+                return templates.TemplateResponse(
+                    "add_part.html",
+                    {
+                        "request": request,
+                        "barcode": barcode,
+                        "categories": categories,
+                        "stores": stores,
+                        "category_prefix_map": category_prefix_map,
+                        "form_values": form_values,
+                        "combine_candidate": existing_part,
+                        "combine_warning": warning_message,
+                    },
+                    status_code=200,
+                )
+
         session.add(new_part)
+        session.flush()
+        log_inventory_addition(session, new_part, new_part.quantity, "Single add")
         session.commit()
 
     return RedirectResponse("/parts", status_code=HTTP_303_SEE_OTHER)
@@ -318,44 +662,195 @@ def add_bulk_form(request: Request):
     with Session(engine) as session:
         categories = session.exec(select(Category)).all()
         stores = session.exec(select(Store)).all()
-    rows = list(range(5))
+        prefix_entries = session.exec(select(CategoryPrefix)).all()
+    rows = [
+        {
+            "part_number": "",
+            "category": "",
+            "store": "",
+            "description": "",
+            "price": "",
+            "quantity": "1",
+            "barcode": "",
+            "bin_code": "",
+            "combine_target": "",
+            "combine_info": "",
+            "combine_confirm": False,
+            "existing_bin": "",
+            "existing_store": "",
+        }
+        for _ in range(5)
+    ]
+    category_prefix_map = [
+        {"prefix": entry.prefix, "category": entry.category_name}
+        for entry in prefix_entries
+    ]
     return templates.TemplateResponse(
         "add_bulk.html",
-        {"request": request, "rows": rows, "categories": categories, "stores": stores},
+        {
+            "request": request,
+            "rows": rows,
+            "categories": categories,
+            "stores": stores,
+            "error_message": None,
+            "category_prefix_map": category_prefix_map,
+        },
     )
 
 
 @app.post("/add/bulk")
 def add_bulk(
+    request: Request,
     part_number: list[str] = Form(...),
-    category: list[str] = Form(...),
-    store: list[str] = Form(...),
-    description: list[str] = Form(...),
-    price: list[str] = Form(...),
-    quantity: list[int] = Form(...),
-    barcode: list[str] = Form(...),
-    bin_code: list[str] = Form(...),
+    category: list[str] = Form([]),
+    store: list[str] = Form([]),
+    description: list[str] = Form([]),
+    price: list[str] = Form([]),
+    quantity: list[str] = Form([]),
+    barcode: list[str] = Form([]),
+    bin_code: list[str] = Form([]),
     notes: list[str] = Form([]),
+    combine_target: list[str] = Form([]),
+    combine_confirm_indexes: list[str] = Form([]),
 ):
+    def render_error(message: str, rows_data: list[dict[str, str]]):
+        return templates.TemplateResponse(
+            "add_bulk.html",
+            {
+                "request": request,
+                "rows": rows_data,
+                "categories": categories,
+                "stores": stores,
+                "error_message": message,
+                "category_prefix_map": category_prefix_map,
+            },
+            status_code=400,
+        )
+
     with Session(engine) as session:
+        categories = session.exec(select(Category)).all()
+        stores = session.exec(select(Store)).all()
+        prefix_entries = session.exec(select(CategoryPrefix)).all()
+        category_prefix_map = [
+            {"prefix": entry.prefix, "category": entry.category_name}
+            for entry in prefix_entries
+        ]
+        rows: list[dict[str, str]] = []
+        any_saved = False
+        merge_conflicts = False
+        combine_targets = combine_target or []
+        confirmed_indexes = {
+            int(idx) for idx in combine_confirm_indexes if idx.isdigit()
+        }
+
         for i in range(len(part_number)):
-            normalized_part_number = safe_str(part_number[i]).strip()
+            row = {
+                "part_number": safe_str(part_number[i]).strip(),
+                "category": blank_if_none_word(category[i]) if i < len(category) else "",
+                "store": blank_if_none_word(store[i]) if i < len(store) else "",
+                "description": blank_if_none_word(description[i]) if i < len(description) else "",
+                "price": blank_if_none_word(price[i]) if i < len(price) else "",
+                "quantity": blank_if_none_word(quantity[i]) if i < len(quantity) else "",
+                "barcode": blank_if_none_word(barcode[i]) if i < len(barcode) else "",
+                "bin_code": blank_if_none_word(bin_code[i]) if i < len(bin_code) else "",
+                "combine_target": combine_targets[i] if i < len(combine_targets) else "",
+                "combine_info": "",
+                "combine_confirm": i in confirmed_indexes,
+                "existing_bin": "",
+                "existing_store": "",
+            }
+            rows.append(row)
+
+            normalized_part_number = row["part_number"]
 
             if not normalized_part_number:
                 continue
 
-            p = Part(
-                part_number=normalized_part_number,
-                category=normalize_text(category[i]) if i < len(category) else None,
-                store=normalize_text(store[i]) if i < len(store) else None,
-                description=normalize_text(description[i]) if i < len(description) else None,
-                price=parse_price(price[i]) if i < len(price) else None,
-                quantity=parse_quantity(quantity[i]) if i < len(quantity) else 0,
-                notes=normalize_text(notes[i]) if i < len(notes) else None,
-                barcode=normalize_text(barcode[i]) if i < len(barcode) else None,
-                bin_code=normalize_text(bin_code[i]) if i < len(bin_code) else None,
+            price_value = None
+            if row["price"]:
+                price_value = parse_price(row["price"])
+                if price_value is None:
+                    return render_error(f"Row {i + 1}: Invalid price '{row['price']}'.", rows)
+
+            quantity_value = 0
+            if row["quantity"]:
+                try:
+                    quantity_value = int(row["quantity"])
+                except ValueError:
+                    return render_error(f"Row {i + 1}: Invalid quantity '{row['quantity']}'.", rows)
+                if quantity_value < 0:
+                    return render_error(f"Row {i + 1}: Quantity cannot be negative.", rows)
+            else:
+                quantity_value = 0
+
+            normalized_store = normalize_text(row["store"])
+            normalized_bin = normalize_text(row["bin_code"])
+
+            existing_part = session.exec(
+                select(Part).where(Part.part_number == normalized_part_number)
+            ).first()
+
+            if existing_part:
+                existing_store = existing_part.store or ""
+                existing_bin = existing_part.bin_code or ""
+                new_store_value = normalized_store or ""
+                new_bin_value = normalized_bin or ""
+
+                if existing_store != new_store_value or existing_bin != new_bin_value:
+                    target_id = row["combine_target"]
+                    should_combine = (
+                        i in confirmed_indexes
+                        and target_id
+                        and str(existing_part.id) == target_id
+                    )
+                    if should_combine:
+                        if quantity_value > 0:
+                            existing_part.quantity = (existing_part.quantity or 0) + quantity_value
+                            log_inventory_addition(session, existing_part, quantity_value, "Bulk add (merge)")
+                            session.add(existing_part)
+                            any_saved = True
+                        continue
+
+                    row["combine_target"] = str(existing_part.id)
+                    row["combine_info"] = (
+                        f"Existing entry in bin {existing_bin or '—'} (store {existing_store or '—'})."
+                    )
+                    row["existing_bin"] = existing_bin or "—"
+                    row["existing_store"] = existing_store or "—"
+                    merge_conflicts = True
+                    continue
+
+                existing_part.quantity = (existing_part.quantity or 0) + quantity_value
+                if quantity_value > 0:
+                    log_inventory_addition(session, existing_part, quantity_value, "Bulk add")
+                session.add(existing_part)
+            else:
+                p = Part(
+                    part_number=normalized_part_number,
+                    category=normalize_text(row["category"]),
+                    store=normalized_store,
+                    description=normalize_text(row["description"]),
+                    price=price_value,
+                    quantity=quantity_value,
+                    notes=normalize_text(notes[i]) if i < len(notes) else None,
+                    barcode=normalize_text(row["barcode"]),
+                    bin_code=normalized_bin,
+                )
+                session.add(p)
+                session.flush()
+                if quantity_value > 0:
+                    log_inventory_addition(session, p, quantity_value, "Bulk add")
+
+            any_saved = True
+
+        if merge_conflicts:
+            return render_error(
+                "Review highlighted rows and confirm which ones should combine with existing inventory.",
+                rows,
             )
-            session.add(p)
+
+        if not any_saved:
+            return render_error("Enter at least one part number.", rows)
 
         session.commit()
 
@@ -435,28 +930,28 @@ def history_page(part_id: int, request: Request):
     with Session(engine) as session:
         part = session.get(Part, part_id)
 
-    lines = []
-    if part and part.notes:
-        lines = part.notes.splitlines()
+        if not part:
+            raise HTTPException(status_code=404, detail="Part not found")
+
+        logs = session.exec(
+            select(UsageLog)
+                .where(UsageLog.part_id == part_id)
+                .order_by(UsageLog.created_at.desc())
+        ).all()
 
     return templates.TemplateResponse(
         "history.html",
-        {"request": request, "part": part, "lines": lines},
+        {"request": request, "part": part, "logs": logs},
     )
 
 
 @app.post("/part/{part_id}/history/delete")
-def delete_history_entry(part_id: int, index: int = Form(...)):
+def delete_history_entry(part_id: int, log_id: int = Form(...)):
     with Session(engine) as session:
-        part = session.get(Part, part_id)
-
-        if part and part.notes:
-            lines = part.notes.splitlines()
-            if 0 <= index < len(lines):
-                lines.pop(index)
-                part.notes = "\n".join(lines) if lines else None
-                session.add(part)
-                session.commit()
+        entry = session.get(UsageLog, log_id)
+        if entry and entry.part_id == part_id:
+            session.delete(entry)
+            session.commit()
 
     return RedirectResponse(f"/part/{part_id}/history", status_code=HTTP_303_SEE_OTHER)
 
@@ -470,9 +965,17 @@ def settings_page(request: Request):
     with Session(engine) as session:
         categories = session.exec(select(Category)).all()
         stores = session.exec(select(Store)).all()
+        category_prefixes = session.exec(select(CategoryPrefix)).all()
+        display_preferences = get_display_preferences(session)
     return templates.TemplateResponse(
         "settings.html",
-        {"request": request, "categories": categories, "stores": stores},
+        {
+            "request": request,
+            "categories": categories,
+            "stores": stores,
+            "category_prefixes": category_prefixes,
+            "display_preferences": display_preferences,
+        },
     )
 
 
@@ -539,4 +1042,62 @@ def store_delete(store_id: int = Form(...)):
         if s:
             session.delete(s)
             session.commit()
+    return RedirectResponse("/settings", status_code=HTTP_303_SEE_OTHER)
+
+
+@app.post("/settings/category_prefix/add")
+def category_prefix_add(prefix: str = Form(...), category_name: str = Form(...)):
+    prefix_value = prefix.strip()
+    category_value = category_name.strip()
+    if not prefix_value or not category_value:
+        return RedirectResponse("/settings", status_code=HTTP_303_SEE_OTHER)
+
+    with Session(engine) as session:
+        existing = session.exec(
+            select(CategoryPrefix).where(func.lower(CategoryPrefix.prefix) == prefix_value.lower())
+        ).first()
+        if existing:
+            existing.prefix = prefix_value
+            existing.category_name = category_value
+            session.add(existing)
+        else:
+            session.add(CategoryPrefix(prefix=prefix_value, category_name=category_value))
+        session.commit()
+
+    return RedirectResponse("/settings", status_code=HTTP_303_SEE_OTHER)
+
+
+@app.post("/settings/category_prefix/edit")
+def category_prefix_edit(map_id: int = Form(...), prefix: str = Form(...), category_name: str = Form(...)):
+    with Session(engine) as session:
+        mapping = session.get(CategoryPrefix, map_id)
+        if mapping and prefix.strip() and category_name.strip():
+            mapping.prefix = prefix.strip()
+            mapping.category_name = category_name.strip()
+            session.add(mapping)
+            session.commit()
+    return RedirectResponse("/settings", status_code=HTTP_303_SEE_OTHER)
+
+
+@app.post("/settings/category_prefix/delete")
+def category_prefix_delete(map_id: int = Form(...)):
+    with Session(engine) as session:
+        mapping = session.get(CategoryPrefix, map_id)
+        if mapping:
+            session.delete(mapping)
+            session.commit()
+    return RedirectResponse("/settings", status_code=HTTP_303_SEE_OTHER)
+
+
+@app.post("/settings/display_fields")
+def update_display_fields(visible_fields: list[str] = Form([])):
+    visible_set = {value.strip() for value in visible_fields if value.strip()}
+
+    with Session(engine) as session:
+        preferences = get_display_preferences(session)
+        for pref in preferences:
+            pref.is_visible = pref.field_name in visible_set
+            session.add(pref)
+        session.commit()
+
     return RedirectResponse("/settings", status_code=HTTP_303_SEE_OTHER)

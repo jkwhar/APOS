@@ -7,61 +7,52 @@
 
 <div class="mb-3">
     <a href="{{ url_for('add_part_form') }}" class="btn btn-primary">Add New Part</a>
-    <a href="{{ url_for('add_bulk_form') }}" class="btn btn-secondary">Bulk Add</a>
     <a href="{{ url_for('search_page') }}" class="btn btn-outline-primary">Search</a>
-    <a href="{{ url_for('settings_page') }}" class="btn btn-outline-secondary">Settings</a>
 </div>
 
-<div class="table-responsive">
-    <table class="table table-striped table-bordered align-middle">
-        <thead class="table-light">
-            <tr>
-                <th>ID</th>
-                <th>Part Number</th>
-                <th>Category</th>
-                <th>Store</th>
-                <th>Description</th>
-                <th>Price</th>
-                <th>Qty</th>
-                <th>Barcode</th>
-                <th>Bin</th>
-                <th>Usage</th>
-                <th class="text-center">Actions</th>
-            </tr>
-        </thead>
+<form method="get" action="{{ url_for('parts_list') }}" class="row g-2 align-items-end mb-3">
+    <div class="col-md-3 col-sm-6">
+        <label class="form-label small text-uppercase text-muted">Category</label>
+        <select name="category" class="form-select form-select-sm">
+            <option value="">All</option>
+            {% for cat in categories %}
+            <option value="{{ cat.name }}" {% if filters.category == cat.name %}selected{% endif %}>
+                {{ cat.name }}
+            </option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-md-3 col-sm-6">
+        <label class="form-label small text-uppercase text-muted">Store</label>
+        <select name="store" class="form-select form-select-sm">
+            <option value="">All</option>
+            {% for s in stores %}
+            <option value="{{ s.name }}" {% if filters.store == s.name %}selected{% endif %}>
+                {{ s.name }}
+            </option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-md-3 col-sm-6">
+        <label class="form-label small text-uppercase text-muted">Bin</label>
+        <select name="bin" class="form-select form-select-sm">
+            <option value="">All</option>
+            {% for bin_code in bin_options %}
+            <option value="{{ bin_code }}" {% if filters.bin == bin_code %}selected{% endif %}>
+                {{ bin_code }}
+            </option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-md-2 col-sm-4 d-grid">
+        <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+    </div>
+    <div class="col-md-1 col-sm-2 text-end">
+        <a href="{{ url_for('parts_list') }}" class="btn btn-link btn-sm">Clear</a>
+    </div>
+</form>
 
-        <tbody>
-        {% for part in parts %}
-            <tr>
-                <td>{{ part.id }}</td>
-                <td>{{ part.part_number }}</td>
-                <td>{{ part.category }}</td>
-                <td>{{ part.store }}</td>
-                <td>{{ part.description }}</td>
-                <td>${{ "%.2f"|format(part.price or 0) }}</td>
-                <td>{{ part.quantity }}</td>
-                <td>{{ part.barcode }}</td>
-                <td>{{ part.bin_code }}</td>
-
-                <td>
-                    <a href="/part/{{ part.id }}/history" class="btn btn-sm btn-info">View</a>
-                </td>
-
-                <td class="text-center">
-                    <a href="/part/{{ part.id }}/edit" class="btn btn-sm btn-warning">Edit</a>
-
-                    <form action="/part/{{ part.id }}/delete"
-                          method="post"
-                          class="d-inline"
-                          onsubmit="return confirm('Delete this part?');">
-                        <button type="submit" class="btn btn-sm btn-danger">
-                            Delete
-                        </button>
-                    </form>
-                </td>
-            </tr>
-        {% endfor %}
-        </tbody>
-    </table>
-</div>
+{% with display_config=display_config %}
+    {% include "_parts_table.html" %}
+{% endwith %}
 {% endblock %}

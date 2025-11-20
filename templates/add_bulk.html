@@ -11,43 +11,94 @@
 <div class="card shadow-sm">
     <div class="card-body">
 
+        {% if error_message %}
+        <div class="alert alert-danger">
+            {{ error_message }}
+        </div>
+        {% endif %}
+
         <form action="/add/bulk" method="post" class="row g-3">
-
-            <!-- Global Controls -->
-            <div class="row g-3 align-items-end mb-2">
-                <div class="col-md-6">
-                    <label class="form-label fw-bold mb-1">Global Category</label>
-                    <div class="input-group input-group-sm">
-                        <select id="global_category" class="form-select form-select-sm">
-                            <option value="">-- None --</option>
-                            {% for cat in categories %}
-                            <option value="{{ cat.name }}">{{ cat.name }}</option>
-                            {% endfor %}
-                        </select>
-                        <button type="button" class="btn btn-outline-primary btn-sm"
-                                onclick="applyCategoryToAll()">Apply</button>
-                    </div>
-                </div>
-
-                <div class="col-md-6">
-                    <label class="form-label fw-bold mb-1">Global Store</label>
-                    <div class="input-group input-group-sm">
-                        <select id="global_store" class="form-select form-select-sm">
-                            <option value="">-- None --</option>
-                            {% for s in stores %}
-                            <option value="{{ s.name }}">{{ s.name }}</option>
-                            {% endfor %}
-                        </select>
-                        <button type="button" class="btn btn-outline-primary btn-sm"
-                                onclick="applyStoreToAll()">Apply</button>
-                    </div>
-                </div>
-            </div>
 
             <div class="alert alert-secondary p-3 mb-3">
              <label class="form-label fw-bold">Bulk Paste Part Numbers</label>
              <textarea id="bulk_paste_box" class="form-control mb-2" rows="4" placeholder="Paste part numbers here, one per line"></textarea>
              <button type="button" class="btn btn-outline-dark btn-sm" onclick="bulkPasteFill()">Fill Table</button>
+            </div>
+
+            <!-- Batch Fill controls -->
+            <div class="bg-light border rounded-3 p-3 mb-3">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="fw-semibold text-uppercase small text-muted">Batch Fill</span>
+                    <small class="text-muted">Apply a value to every row</small>
+                </div>
+                <div class="row row-cols-1 row-cols-md-3 row-cols-lg-4 g-2 align-items-end">
+                    <div class="col">
+                        <label class="form-label small text-muted mb-1">Category</label>
+                        <div class="input-group input-group-sm">
+                            <select id="batch_category" class="form-select form-select-sm">
+                                <option value=""></option>
+                                {% for cat in categories %}
+                                <option value="{{ cat.name }}">{{ cat.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <button type="button" class="btn btn-outline-primary btn-sm"
+                                    onclick="applyBatchValue('batch_category', '.row_category')">Fill</button>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <label class="form-label small text-muted mb-1">Store</label>
+                        <div class="input-group input-group-sm">
+                            <select id="batch_store" class="form-select form-select-sm">
+                                <option value=""></option>
+                                {% for s in stores %}
+                                <option value="{{ s.name }}">{{ s.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <button type="button" class="btn btn-outline-primary btn-sm"
+                                    onclick="applyBatchValue('batch_store', '.row_store')">Fill</button>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <label class="form-label small text-muted mb-1">Description</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" id="batch_description" class="form-control form-control-sm" placeholder="e.g. 3mm spacer">
+                            <button type="button" class="btn btn-outline-primary btn-sm"
+                                    onclick="applyBatchValue('batch_description', 'input[name=description]')">Fill</button>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <label class="form-label small text-muted mb-1">Barcode</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" id="batch_barcode" class="form-control form-control-sm" placeholder="Barcode">
+                            <button type="button" class="btn btn-outline-primary btn-sm"
+                                    onclick="applyBatchValue('batch_barcode', 'input[name=barcode]')">Fill</button>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <label class="form-label small text-muted mb-1">Price (USD)</label>
+                        <div class="input-group input-group-sm">
+                            <input type="number" step="0.01" id="batch_price" class="form-control form-control-sm" placeholder="1.99">
+                            <button type="button" class="btn btn-outline-primary btn-sm"
+                                    onclick="applyBatchValue('batch_price', 'input[name=price]')">Fill</button>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <label class="form-label small text-muted mb-1">Quantity</label>
+                        <div class="input-group input-group-sm">
+                            <input type="number" id="batch_quantity" class="form-control form-control-sm" placeholder="1">
+                            <button type="button" class="btn btn-outline-primary btn-sm"
+                                    onclick="applyBatchValue('batch_quantity', 'input[name=quantity]')">Fill</button>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <label class="form-label small text-muted mb-1">Bin Code</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" id="batch_bin_code" class="form-control form-control-sm" placeholder="A-101">
+                            <button type="button" class="btn btn-outline-primary btn-sm"
+                                    onclick="applyBatchValue('batch_bin_code', 'input[name=bin_code]')">Fill</button>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Table -->
@@ -56,6 +107,7 @@
                     <thead class="table-light">
                         <tr>
                             <th>Part Number</th>
+                            <th class="text-start" style="width: 240px;">Combine?</th>
                             <th>Category</th>
                             <th>Store</th>
                             <th>Description</th>
@@ -67,50 +119,82 @@
                     </thead>
 
                     <tbody>
-                    {% for r in rows %}
-                        <tr>
+                    {% for row in rows %}
+                        <tr class="{% if row.combine_info %}table-warning{% endif %}">
                             <td>
                                 <input type="text" name="part_number"
                                        class="form-control"
+                                       value="{{ row.part_number }}"
                                        onblur="autoFillFromPartNumber(this)">
                             </td>
+                            {% if row.combine_info %}
+                            <td class="text-start">
+                                <input type="hidden" name="combine_target" value="{{ row.combine_target or '' }}">
+                                <div class="alert alert-warning small mb-0">
+                                    {{ row.combine_info }}<br>
+                                    <div class="form-check mt-2">
+                                        <input class="form-check-input"
+                                               type="checkbox"
+                                               name="combine_confirm_indexes"
+                                               value="{{ loop.index0 }}"
+                                               id="combine_{{ loop.index0 }}"
+                                               {% if row.combine_confirm %}checked{% endif %}>
+                                        <label class="form-check-label" for="combine_{{ loop.index0 }}">
+                                            Combine into bin {{ row.existing_bin or "—" }}
+                                        </label>
+                                    </div>
+                                </div>
+                            </td>
+                            {% else %}
+                            <td class="text-start">
+                                <input type="hidden" name="combine_target" value="">
+                                <span class="text-muted small">—</span>
+                            </td>
+                            {% endif %}
 
                             <td>
                                 <select name="category" class="form-select row_category">
-                                    <option value="">-- None --</option>
+                                    <option value=""></option>
                                     {% for cat in categories %}
-                                    <option value="{{ cat.name }}">{{ cat.name }}</option>
+                                    <option value="{{ cat.name }}"
+                                            {% if row.category == cat.name %}selected{% endif %}>{{ cat.name }}</option>
                                     {% endfor %}
                                 </select>
                             </td>
 
                             <td>
                                 <select name="store" class="form-select row_store">
-                                    <option value="">-- None --</option>
+                                    <option value=""></option>
                                     {% for s in stores %}
-                                    <option value="{{ s.name }}">{{ s.name }}</option>
+                                    <option value="{{ s.name }}"
+                                            {% if row.store == s.name %}selected{% endif %}>{{ s.name }}</option>
                                     {% endfor %}
                                 </select>
                             </td>
 
                             <td>
-                                <input type="text" name="description" class="form-control">
+                                <input type="text" name="description" class="form-control"
+                                       value="{{ row.description }}">
                             </td>
 
                             <td>
-                                <input type="number" step="0.01" name="price" class="form-control">
+                                <input type="number" step="0.01" name="price" class="form-control"
+                                       value="{{ row.price }}">
                             </td>
 
                             <td>
-                                <input type="number" name="quantity" value="1" class="form-control">
+                                <input type="number" name="quantity" class="form-control"
+                                       value="{{ row.quantity }}">
                             </td>
 
                             <td>
-                                <input type="text" name="barcode" class="form-control">
+                                <input type="text" name="barcode" class="form-control"
+                                       value="{{ row.barcode }}">
                             </td>
 
                             <td>
-                                <input type="text" name="bin_code" class="form-control">
+                                <input type="text" name="bin_code" class="form-control"
+                                       value="{{ row.bin_code }}">
                             </td>
                         </tr>
                     {% endfor %}
@@ -129,13 +213,13 @@
 </div>
 
 <script>
-function applyCategoryToAll() {
-    const value = document.getElementById('global_category').value;
-    document.querySelectorAll('.row_category').forEach(x => x.value = value);
-}
-function applyStoreToAll() {
-    const value = document.getElementById('global_store').value;
-    document.querySelectorAll('.row_store').forEach(x => x.value = value);
+function applyBatchValue(controlId, selector) {
+    const element = document.getElementById(controlId);
+    if (!element) return;
+    const value = element.value;
+    document.querySelectorAll(selector).forEach((input) => {
+        input.value = value;
+    });
 }
 </script>
 
@@ -157,12 +241,21 @@ lines.forEach(v=>{
 }
 function addRow(){
  const tbl=document.querySelector('table tbody');
- const r=tbl.rows[1].cloneNode(true);
- r.querySelectorAll('input,select').forEach(x=>x.value='');
- tbl.appendChild(r);
+ if(!tbl) return;
+ const template = tbl.querySelector('tr');
+ if(!template) return;
+ const newRow = template.cloneNode(true);
+ newRow.querySelectorAll('input').forEach(input=>{
+   input.value = (input.name === 'quantity') ? '1' : '';
+ });
+ newRow.querySelectorAll('select').forEach(select=>select.value='');
+ tbl.appendChild(newRow);
 }
 </script>
 
+<script>
+    window.categoryPrefixMappings = {{ category_prefix_map | tojson | safe }};
+</script>
 <script src="/static/autofill.js"></script>
 
 {% endblock %}
