@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}Decoder - APOS Inventory{% endblock %}
+
+{% block content %}
+<div class="row g-4 align-items-start">
+  <div class="col-lg-6">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <div>
+            <h2 class="h4 mb-1">Part Number Decoder</h2>
+            <p class="text-muted small mb-0">Uses the same autofill rules as the Add form.</p>
+          </div>
+          <span class="badge bg-light text-primary">Live</span>
+        </div>
+
+        <form id="decoder-form" class="row g-3">
+          <div class="col-12">
+            <label class="form-label">Part Number</label>
+            <input type="text"
+                   class="form-control form-control-lg"
+                   id="decoder-part-number"
+                   name="part_number"
+                   placeholder="e.g. RES-4K7-1/4W-1% or MEC-HST-5-25MM"
+                   autocomplete="off">
+          </div>
+
+          <div class="col-12">
+            <label class="form-label">Description</label>
+            <input type="text"
+                   class="form-control"
+                   name="description"
+                   id="decoder-description"
+                   placeholder="Autofilled description"
+                   readonly>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label">Category</label>
+            <select name="category" id="decoder-category" class="form-select" disabled>
+              <option value="">-- None --</option>
+              {% for cat in categories %}
+              <option value="{{ cat.name }}">{{ cat.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="col-12 d-flex gap-2">
+            <button type="button" class="btn btn-primary" id="decode-button">Decode</button>
+            <button type="button" class="btn btn-outline-secondary" id="clear-button">Clear</button>
+          </div>
+        </form>
+
+        <hr class="my-4">
+
+        <div>
+          <p class="text-uppercase text-muted fw-semibold small mb-1">Decoded Preview</p>
+          <div class="d-flex flex-wrap gap-2 align-items-center">
+            <span class="badge bg-info-subtle text-info" id="preview-part-number">Part number: -</span>
+            <span class="badge bg-success-subtle text-success" id="preview-description">Description: -</span>
+            <span class="badge bg-dark-subtle text-dark" id="preview-category">Category: -</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h3 class="h5 mb-3">Quick patterns</h3>
+        <p class="text-muted small">Prefixes that auto-fill description and category:</p>
+        <ul class="small mb-3">
+          <li><strong>RES</strong> - resistor values (e.g. <code>RES-4K7-1/4W-1%</code> -> "4.7kOhm, 1/4w, 1%")</li>
+          <li><strong>CAP</strong> - capacitor values (e.g. <code>CAP-4u7-16V</code> -> "4.7uF, 16V")</li>
+          <li><strong>DIO / TRN / IND / IC</strong> - diodes, transistors, inductors, and ICs map the remaining tokens into description</li>
+          <li><strong>MEC</strong> (or direct type) - mechanical parts like <code>MEC-HST-5-25MM</code> or <code>WSH-10-FLAT</code></li>
+          <li><strong>ESP32</strong> tokens auto-tag as MCU</li>
+          <li><strong>Prefix map</strong> - custom prefixes from Settings also set the category automatically</li>
+        </ul>
+        <p class="mb-1 fw-semibold small">Tips</p>
+        <ul class="small mb-0">
+          <li>Use dashes to separate value, wattage, tolerance, and ratings (e.g. current, voltage).</li>
+          <li>Mechanical sizes accept metric (10, 10mm) and fractions (3/8).</li>
+          <li>If no rule matches, the decoder humanizes the tokens for a best-guess description.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  window.categoryPrefixMappings = {{ category_prefix_map | tojson | safe }};
+</script>
+<script src="/static/autofill.js"></script>
+<script>
+  (function () {
+    const pnInput = document.getElementById("decoder-part-number");
+    const descInput = document.getElementById("decoder-description");
+    const catSelect = document.getElementById("decoder-category");
+    const decodeBtn = document.getElementById("decode-button");
+    const clearBtn = document.getElementById("clear-button");
+    const previewPN = document.getElementById("preview-part-number");
+    const previewDesc = document.getElementById("preview-description");
+    const previewCat = document.getElementById("preview-category");
+
+    function resetOutputs() {
+      descInput.value = "";
+      catSelect.value = "";
+      updatePreview();
+    }
+
+    function updatePreview() {
+      const pn = pnInput.value.trim() || "-";
+      const desc = descInput.value.trim() || "-";
+      const cat = catSelect.options[catSelect.selectedIndex]?.text || "-";
+      previewPN.textContent = `Part number: ${pn}`;
+      previewDesc.textContent = `Description: ${desc}`;
+      previewCat.textContent = `Category: ${cat}`;
+    }
+
+    function runDecode() {
+      resetOutputs();
+      if (pnInput.value.trim()) {
+        autoFillFromPartNumber(pnInput);
+      }
+      updatePreview();
+    }
+
+    decodeBtn.addEventListener("click", runDecode);
+    pnInput.addEventListener("blur", runDecode);
+    pnInput.addEventListener("input", () => {
+      resetOutputs();
+      if (pnInput.value.trim()) {
+        autoFillFromPartNumber(pnInput);
+      }
+      updatePreview();
+    });
+    clearBtn.addEventListener("click", () => {
+      pnInput.value = "";
+      resetOutputs();
+      pnInput.focus();
+    });
+
+    updatePreview();
+  })();
+</script>
+{% endblock %}
