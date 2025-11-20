@@ -67,8 +67,13 @@
           <input type="text" class="form-control" name="bin_code" value="{{ part.bin_code }}">
         </div>
 
-        <div class="col-12 text-end">
-          <button type="submit" class="btn btn-success btn-lg px-5 mt-3">💾 Save Changes</button>
+        <div class="col-12 d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mt-4">
+          <button type="submit" class="btn btn-success btn-lg px-4 mb-3 mb-md-0">💾 Save Changes</button>
+          <form action="/part/{{ part.id }}/delete"
+                method="post"
+                onsubmit="return confirm('Delete this part permanently?');">
+            <button type="submit" class="btn btn-outline-danger">Delete Part</button>
+          </form>
         </div>
 
       </form>

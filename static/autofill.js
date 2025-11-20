@@ -326,10 +326,12 @@ function formatInductorValue(raw) {
 }
 
 function buildMechanicalDescription(pn) {
-    if (!/^mec[-_]/i.test(pn)) return null;
+    if (!pn) return null;
 
-    const cleaned = pn.replace(/^mec[-_]?/i, "");
-    if (!cleaned) return null;
+    let cleaned = pn;
+    if (/^mec[-_]/i.test(pn)) {
+        cleaned = pn.replace(/^mec[-_]?/i, "");
+    }
 
     const segments = cleaned.split(/-/).map((t) => t.trim()).filter(Boolean);
     if (!segments.length) return null;
@@ -337,6 +339,7 @@ function buildMechanicalDescription(pn) {
     const [rawType, ...rest] = segments;
     const typeKey = rawType.toLowerCase();
     const typeDetail = MECHANICAL_TYPE_DETAILS[typeKey];
+    if (!typeDetail) return null;
     const typeLabel = typeDetail?.label || formatMechanicalSize(rawType);
 
     if (!rest.length) {
@@ -524,10 +527,10 @@ function autoFillFromPartNumber(inputElem) {
         return true;
     };
 
-    // ==============================
-    // Mechanical prefix (MEC-)
-    // ==============================
-    const mechanicalInfo = buildMechanicalDescription(pn);
+// ==============================
+// Mechanical parts (HST/WSH/...)
+// ==============================
+const mechanicalInfo = buildMechanicalDescription(pn);
     if (mechanicalInfo) {
         let categoryToApply = mechanicalInfo.category;
         if (

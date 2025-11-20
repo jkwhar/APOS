@@ -19,6 +19,12 @@
 
         <form action="/add/bulk" method="post" class="row g-3">
 
+            <div class="alert alert-secondary p-3 mb-3">
+             <label class="form-label fw-bold">Bulk Paste Part Numbers</label>
+             <textarea id="bulk_paste_box" class="form-control mb-2" rows="4" placeholder="Paste part numbers here, one per line"></textarea>
+             <button type="button" class="btn btn-outline-dark btn-sm" onclick="bulkPasteFill()">Fill Table</button>
+            </div>
+
             <!-- Batch Fill controls -->
             <div class="bg-light border rounded-3 p-3 mb-3">
                 <div class="d-flex justify-content-between align-items-center mb-2">
@@ -95,18 +101,13 @@
                 </div>
             </div>
 
-            <div class="alert alert-secondary p-3 mb-3">
-             <label class="form-label fw-bold">Bulk Paste Part Numbers</label>
-             <textarea id="bulk_paste_box" class="form-control mb-2" rows="4" placeholder="Paste part numbers here, one per line"></textarea>
-             <button type="button" class="btn btn-outline-dark btn-sm" onclick="bulkPasteFill()">Fill Table</button>
-            </div>
-
             <!-- Table -->
             <div class="col-12 table-responsive">
                 <table class="table table-bordered table-striped align-middle text-center">
                     <thead class="table-light">
                         <tr>
                             <th>Part Number</th>
+                            <th class="text-start" style="width: 240px;">Combine?</th>
                             <th>Category</th>
                             <th>Store</th>
                             <th>Description</th>
@@ -125,6 +126,27 @@
                                        class="form-control"
                                        value="{{ row.part_number }}"
                                        onblur="autoFillFromPartNumber(this)">
+                            </td>
+                            <td class="text-start">
+                                <input type="hidden" name="combine_target" value="{{ row.combine_target or '' }}">
+                                {% if row.combine_info %}
+                                <div class="alert alert-warning small mb-0">
+                                    {{ row.combine_info }}<br>
+                                    <div class="form-check mt-2">
+                                        <input class="form-check-input"
+                                               type="checkbox"
+                                               name="combine_confirm_indexes"
+                                               value="{{ loop.index0 }}"
+                                               id="combine_{{ loop.index0 }}"
+                                               {% if row.combine_confirm %}checked{% endif %}>
+                                        <label class="form-check-label" for="combine_{{ loop.index0 }}">
+                                            Combine into bin {{ row.existing_bin or "—" }}
+                                        </label>
+                                    </div>
+                                </div>
+                                {% else %}
+                                <span class="text-muted small">—</span>
+                                {% endif %}
                             </td>
 
                             <td>

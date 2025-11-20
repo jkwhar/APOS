@@ -35,11 +35,14 @@
     </div>
     <div class="col-md-3 col-sm-6">
         <label class="form-label small text-uppercase text-muted">Bin</label>
-        <input type="text"
-               name="bin"
-               value="{{ filters.bin }}"
-               class="form-control form-control-sm"
-               placeholder="e.g. A1, Drawer 3">
+        <select name="bin" class="form-select form-select-sm">
+            <option value="">All</option>
+            {% for bin_code in bin_options %}
+            <option value="{{ bin_code }}" {% if filters.bin == bin_code %}selected{% endif %}>
+                {{ bin_code }}
+            </option>
+            {% endfor %}
+        </select>
     </div>
     <div class="col-md-2 col-sm-4 d-grid">
         <button type="submit" class="btn btn-primary btn-sm">Filter</button>

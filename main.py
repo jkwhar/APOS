@@ -355,6 +355,16 @@ def parts_list(
         parts = session.exec(stmt).all()
         categories = session.exec(select(Category).order_by(Category.name)).all()
         stores = session.exec(select(Store).order_by(Store.name)).all()
+        bin_options = [
+            value
+            for value in session.exec(
+                select(Part.bin_code)
+                .where(Part.bin_code.is_not(None))
+                .group_by(Part.bin_code)
+                .order_by(Part.bin_code)
+            )
+            if value
+        ]
         display_config = get_display_config(session)
 
     filters = {
@@ -370,6 +380,7 @@ def parts_list(
             "parts": parts,
             "categories": categories,
             "stores": stores,
+            "bin_options": bin_options,
             "filters": filters,
             "display_config": display_config,
         },
@@ -505,6 +516,16 @@ def add_part_form(request: Request, barcode: str | None = None):
         categories = session.exec(select(Category)).all()
         stores = session.exec(select(Store)).all()
         prefix_entries = session.exec(select(CategoryPrefix)).all()
+    form_values = {
+        "part_number": "",
+        "category": "",
+        "store": "",
+        "description": "",
+        "price": "",
+        "quantity": "0",
+        "barcode": barcode or "",
+        "bin_code": "",
+    }
     category_prefix_map = [
         {"prefix": entry.prefix, "category": entry.category_name}
         for entry in prefix_entries
@@ -517,6 +538,9 @@ def add_part_form(request: Request, barcode: str | None = None):
             "categories": categories,
             "stores": stores,
             "category_prefix_map": category_prefix_map,
+            "form_values": form_values,
+            "combine_candidate": None,
+            "combine_warning": None,
         },
     )
 
@@ -531,26 +555,96 @@ def add_part(
     quantity: str = Form("0"),
     barcode: str = Form(""),
     bin_code: str = Form(""),
-    notes: str = Form(""),
+    combine_with: int | None = Form(None),
 ):
     normalized_part_number = part_number.strip()
 
     if not normalized_part_number:
         raise HTTPException(status_code=400, detail="Part number is required")
 
+    normalized_category = normalize_text(category)
+    normalized_store = normalize_text(store)
+    normalized_description = normalize_text(description)
+    normalized_barcode = normalize_text(barcode)
+    normalized_bin = normalize_text(bin_code)
+    parsed_price = parse_price(price)
+    parsed_quantity = parse_quantity(quantity)
+
+    form_values = {
+        "part_number": normalized_part_number,
+        "category": normalized_category or "",
+        "store": normalized_store or "",
+        "description": description.strip(),
+        "price": price.strip(),
+        "quantity": quantity.strip() or "0",
+        "barcode": barcode.strip(),
+        "bin_code": bin_code.strip(),
+    }
+
     new_part = Part(
         part_number=normalized_part_number,
-        category=normalize_text(category),
-        store=normalize_text(store),
-        description=normalize_text(description),
-        price=parse_price(price),
-        quantity=parse_quantity(quantity),
-        barcode=normalize_text(barcode),
-        bin_code=normalize_text(bin_code),
-        notes=normalize_text(notes),
+        category=normalized_category,
+        store=normalized_store,
+        description=normalized_description,
+        price=parsed_price,
+        quantity=parsed_quantity,
+        barcode=normalized_barcode,
+        bin_code=normalized_bin,
+        notes=None,
     )
 
     with Session(engine) as session:
+        combine_part = session.get(Part, combine_with) if combine_with else None
+        if combine_with and not combine_part:
+            raise HTTPException(status_code=400, detail="Invalid merge target")
+
+        if combine_part:
+            if combine_part.part_number != normalized_part_number:
+                raise HTTPException(status_code=400, detail="Part mismatch for merge")
+            amount = parsed_quantity
+            if amount > 0:
+                combine_part.quantity = (combine_part.quantity or 0) + amount
+                log_inventory_addition(session, combine_part, amount, "Single add (merge)")
+                session.add(combine_part)
+                session.commit()
+            return RedirectResponse("/parts", status_code=HTTP_303_SEE_OTHER)
+
+        existing_part = session.exec(
+            select(Part).where(Part.part_number == normalized_part_number)
+        ).first()
+
+        if existing_part:
+            existing_store = existing_part.store or ""
+            existing_bin = existing_part.bin_code or ""
+            new_store_value = normalized_store or ""
+            new_bin_value = normalized_bin or ""
+            if existing_store != new_store_value or existing_bin != new_bin_value:
+                categories = session.exec(select(Category)).all()
+                stores = session.exec(select(Store)).all()
+                prefix_entries = session.exec(select(CategoryPrefix)).all()
+                category_prefix_map = [
+                    {"prefix": entry.prefix, "category": entry.category_name}
+                    for entry in prefix_entries
+                ]
+                warning_message = (
+                    f"Existing record uses Store '{existing_store or '—'}' and Bin '{existing_bin or '—'}'. "
+                    "Combining will keep that information and only add the quantity you entered."
+                )
+                return templates.TemplateResponse(
+                    "add_part.html",
+                    {
+                        "request": request,
+                        "barcode": barcode,
+                        "categories": categories,
+                        "stores": stores,
+                        "category_prefix_map": category_prefix_map,
+                        "form_values": form_values,
+                        "combine_candidate": existing_part,
+                        "combine_warning": warning_message,
+                    },
+                    status_code=200,
+                )
+
         session.add(new_part)
         session.flush()
         log_inventory_addition(session, new_part, new_part.quantity, "Single add")
@@ -579,6 +673,11 @@ def add_bulk_form(request: Request):
             "quantity": "1",
             "barcode": "",
             "bin_code": "",
+            "combine_target": "",
+            "combine_info": "",
+            "combine_confirm": False,
+            "existing_bin": "",
+            "existing_store": "",
         }
         for _ in range(5)
     ]
@@ -611,6 +710,8 @@ def add_bulk(
     barcode: list[str] = Form([]),
     bin_code: list[str] = Form([]),
     notes: list[str] = Form([]),
+    combine_target: list[str] = Form([]),
+    combine_confirm_indexes: list[str] = Form([]),
 ):
     def render_error(message: str, rows_data: list[dict[str, str]]):
         return templates.TemplateResponse(
@@ -636,6 +737,11 @@ def add_bulk(
         ]
         rows: list[dict[str, str]] = []
         any_saved = False
+        merge_conflicts = False
+        combine_targets = combine_target or []
+        confirmed_indexes = {
+            int(idx) for idx in combine_confirm_indexes if idx.isdigit()
+        }
 
         for i in range(len(part_number)):
             row = {
@@ -647,6 +753,11 @@ def add_bulk(
                 "quantity": blank_if_none_word(quantity[i]) if i < len(quantity) else "",
                 "barcode": blank_if_none_word(barcode[i]) if i < len(barcode) else "",
                 "bin_code": blank_if_none_word(bin_code[i]) if i < len(bin_code) else "",
+                "combine_target": combine_targets[i] if i < len(combine_targets) else "",
+                "combine_info": "",
+                "combine_confirm": i in confirmed_indexes,
+                "existing_bin": "",
+                "existing_store": "",
             }
             rows.append(row)
 
@@ -672,11 +783,43 @@ def add_bulk(
             else:
                 quantity_value = 0
 
+            normalized_store = normalize_text(row["store"])
+            normalized_bin = normalize_text(row["bin_code"])
+
             existing_part = session.exec(
                 select(Part).where(Part.part_number == normalized_part_number)
             ).first()
 
             if existing_part:
+                existing_store = existing_part.store or ""
+                existing_bin = existing_part.bin_code or ""
+                new_store_value = normalized_store or ""
+                new_bin_value = normalized_bin or ""
+
+                if existing_store != new_store_value or existing_bin != new_bin_value:
+                    target_id = row["combine_target"]
+                    should_combine = (
+                        i in confirmed_indexes
+                        and target_id
+                        and str(existing_part.id) == target_id
+                    )
+                    if should_combine:
+                        if quantity_value > 0:
+                            existing_part.quantity = (existing_part.quantity or 0) + quantity_value
+                            log_inventory_addition(session, existing_part, quantity_value, "Bulk add (merge)")
+                            session.add(existing_part)
+                            any_saved = True
+                        continue
+
+                    row["combine_target"] = str(existing_part.id)
+                    row["combine_info"] = (
+                        f"Existing entry in bin {existing_bin or '—'} (store {existing_store or '—'})."
+                    )
+                    row["existing_bin"] = existing_bin or "—"
+                    row["existing_store"] = existing_store or "—"
+                    merge_conflicts = True
+                    continue
+
                 existing_part.quantity = (existing_part.quantity or 0) + quantity_value
                 if quantity_value > 0:
                     log_inventory_addition(session, existing_part, quantity_value, "Bulk add")
@@ -685,13 +828,13 @@ def add_bulk(
                 p = Part(
                     part_number=normalized_part_number,
                     category=normalize_text(row["category"]),
-                    store=normalize_text(row["store"]),
+                    store=normalized_store,
                     description=normalize_text(row["description"]),
                     price=price_value,
                     quantity=quantity_value,
                     notes=normalize_text(notes[i]) if i < len(notes) else None,
                     barcode=normalize_text(row["barcode"]),
-                    bin_code=normalize_text(row["bin_code"]),
+                    bin_code=normalized_bin,
                 )
                 session.add(p)
                 session.flush()
@@ -699,6 +842,12 @@ def add_bulk(
                     log_inventory_addition(session, p, quantity_value, "Bulk add")
 
             any_saved = True
+
+        if merge_conflicts:
+            return render_error(
+                "Review highlighted rows and confirm which ones should combine with existing inventory.",
+                rows,
+            )
 
         if not any_saved:
             return render_error("Enter at least one part number.", rows)
