@@ -5,20 +5,59 @@
 
 <h2 class="mb-4">Search Parts</h2>
 
-<form method="get" action="/search" class="input-group mb-4">
-    <input type="text"
-           name="q"
-           value="{{ q }}"
-           class="form-control form-control-lg"
-           placeholder="Search term (e.g. 32, esp32, resistor)">
-    <button class="btn btn-primary btn-lg" type="submit">Search</button>
+<form method="get" action="{{ url_for('search_page') }}" class="card card-body mb-4">
+    <div class="row g-3 align-items-end">
+        <div class="col-lg-5">
+            <label class="form-label small text-uppercase text-muted">Search</label>
+            <input type="text"
+                   name="q"
+                   value="{{ q }}"
+                   class="form-control"
+                   placeholder="Search term (e.g. esp32, resistor)">
+        </div>
+        <div class="col-md-3">
+            <label class="form-label small text-uppercase text-muted">Category</label>
+            <select name="category" class="form-select">
+                <option value="">All</option>
+                {% for cat in categories %}
+                <option value="{{ cat.name }}" {% if filters.category == cat.name %}selected{% endif %}>
+                    {{ cat.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label small text-uppercase text-muted">Store</label>
+            <select name="store" class="form-select">
+                <option value="">All</option>
+                {% for s in stores %}
+                <option value="{{ s.name }}" {% if filters.store == s.name %}selected{% endif %}>
+                    {{ s.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small text-uppercase text-muted">Stock</label>
+            <select name="stock" class="form-select">
+                <option value="">All</option>
+                <option value="in" {% if filters.stock == "in" %}selected{% endif %}>In Stock (&gt;0)</option>
+                <option value="low" {% if filters.stock == "low" %}selected{% endif %}>Low (&le;2)</option>
+                <option value="out" {% if filters.stock == "out" %}selected{% endif %}>Out / Unknown</option>
+            </select>
+        </div>
+        <div class="col-12 text-end">
+            <button class="btn btn-primary" type="submit">Search</button>
+            <a href="{{ url_for('search_page') }}" class="btn btn-link btn-sm">Clear</a>
+        </div>
+    </div>
 </form>
 
 {% if q %}
     <h4 class="mb-3">Results for "{{ q }}"</h4>
 
     {% if results %}
-        {% with parts=results %}
+        {% with parts=results, display_config=display_config %}
             {% include "_parts_table.html" %}
         {% endwith %}
     {% else %}

@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request, Form, HTTPException
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlmodel import SQLModel, Field, Session, create_engine, select
 from starlette.status import HTTP_303_SEE_OTHER
 from datetime import datetime
@@ -72,6 +72,28 @@ class CategoryPrefix(SQLModel, table=True):
     category_name: str
 
 
+class DisplayPreference(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    field_name: str
+    label: str
+    is_visible: bool = Field(default=True)
+    sort_order: int = Field(default=0)
+
+
+DISPLAY_FIELD_DEFAULTS: list[tuple[str, str]] = [
+    ("id", "ID"),
+    ("part_number", "Part Number"),
+    ("category", "Category"),
+    ("store", "Store"),
+    ("description", "Description"),
+    ("price", "Price"),
+    ("quantity", "Quantity"),
+    ("barcode", "Barcode"),
+    ("bin_code", "Bin"),
+    ("usage", "Usage/History"),
+]
+
+
 def safe_str(value: str | int | float | None) -> str:
     if value is None:
         return ""
@@ -108,6 +130,51 @@ def parse_quantity(value: str | int | float | None) -> int:
 def blank_if_none_word(value: str | int | float | None) -> str:
     text = safe_str(value).strip()
     return "" if text.lower() == "none" else text
+
+
+def get_display_preferences(session: Session) -> list[DisplayPreference]:
+    preferences = session.exec(
+        select(DisplayPreference).order_by(DisplayPreference.sort_order)
+    ).all()
+    if preferences:
+        return preferences
+
+    for order, (field_name, label) in enumerate(DISPLAY_FIELD_DEFAULTS):
+        session.add(
+            DisplayPreference(
+                field_name=field_name,
+                label=label,
+                sort_order=order,
+                is_visible=True,
+            )
+        )
+    session.commit()
+    return session.exec(
+        select(DisplayPreference).order_by(DisplayPreference.sort_order)
+    ).all()
+
+
+def get_display_config(session: Session) -> dict[str, bool]:
+    preferences = get_display_preferences(session)
+    return {pref.field_name: pref.is_visible for pref in preferences}
+
+
+def apply_inventory_filters(
+    stmt, category_value: str | None, store_value: str | None, stock_filter: str | None
+):
+    if category_value:
+        stmt = stmt.where(Part.category == category_value)
+    if store_value:
+        stmt = stmt.where(Part.store == store_value)
+
+    if stock_filter == "low":
+        stmt = stmt.where(or_(Part.quantity <= 2, Part.quantity.is_(None)))
+    elif stock_filter == "in":
+        stmt = stmt.where(Part.quantity > 0)
+    elif stock_filter == "out":
+        stmt = stmt.where(or_(Part.quantity <= 0, Part.quantity.is_(None)))
+
+    return stmt
 
 
 def create_usage_entry(
@@ -182,6 +249,7 @@ def seed_initial_data() -> None:
             if name.lower() not in existing_stores:
                 session.add(Store(name=name))
 
+        get_display_preferences(session)
         session.commit()
 
 
@@ -231,9 +299,15 @@ def find_parts(request: Request, query: str | None = None, barcode: str | None =
             (Part.bin_code.ilike(f"%{search_value}%"))
         )
         parts = session.exec(stmt).all()
+        display_config = get_display_config(session)
 
     return templates.TemplateResponse("find.html",
-                                      {"request": request, "parts": parts, "search_value": search_value})
+                                      {
+                                          "request": request,
+                                          "parts": parts,
+                                          "search_value": search_value,
+                                          "display_config": display_config,
+                                      })
 
 # consume route
 
@@ -262,10 +336,44 @@ def use_one_part(part_id: int, request: Request):
 # ============================================================
 
 @app.get("/parts", response_class=HTMLResponse)
-def parts_list(request: Request):
+def parts_list(
+    request: Request,
+    category: str | None = None,
+    store: str | None = None,
+    bin: str | None = None,
+):
+    category_value = (category or "").strip() or None
+    store_value = (store or "").strip() or None
+    stock_value = None
+    bin_value = (bin or "").strip() or None
+
     with Session(engine) as session:
-        parts = session.exec(select(Part)).all()
-    return templates.TemplateResponse("parts.html", {"request": request, "parts": parts})
+        stmt = select(Part).order_by(Part.part_number)
+        stmt = apply_inventory_filters(stmt, category_value, store_value, stock_value)
+        if bin_value:
+            stmt = stmt.where(Part.bin_code.ilike(f"%{bin_value}%"))
+        parts = session.exec(stmt).all()
+        categories = session.exec(select(Category).order_by(Category.name)).all()
+        stores = session.exec(select(Store).order_by(Store.name)).all()
+        display_config = get_display_config(session)
+
+    filters = {
+        "category": category_value or "",
+        "store": store_value or "",
+        "bin": bin_value or "",
+    }
+
+    return templates.TemplateResponse(
+        "parts.html",
+        {
+            "request": request,
+            "parts": parts,
+            "categories": categories,
+            "stores": stores,
+            "filters": filters,
+            "display_config": display_config,
+        },
+    )
 
 
 # ============================================================
@@ -273,13 +381,26 @@ def parts_list(request: Request):
 # ============================================================
 
 @app.get("/search", response_class=HTMLResponse)
-def search_page(request: Request, q: str | None = None):
-    results = []
+def search_page(
+    request: Request,
+    q: str | None = None,
+    category: str | None = None,
+    store: str | None = None,
+    stock: str | None = None,
+):
     query = (q or "").strip()
+    category_value = (category or "").strip() or None
+    store_value = (store or "").strip() or None
+    stock_value = (stock or "").strip() or None
 
-    if query:
-        pattern = f"%{query}%"
-        with Session(engine) as session:
+    results = []
+    with Session(engine) as session:
+        categories = session.exec(select(Category).order_by(Category.name)).all()
+        stores = session.exec(select(Store).order_by(Store.name)).all()
+        display_config = get_display_config(session)
+
+        if query:
+            pattern = f"%{query}%"
             stmt = select(Part).where(
                 (Part.part_number.ilike(pattern))
                 | (Part.category.ilike(pattern))
@@ -289,7 +410,14 @@ def search_page(request: Request, q: str | None = None):
                 | (Part.bin_code.ilike(pattern))
                 | (Part.notes.ilike(pattern))
             )
+            stmt = apply_inventory_filters(stmt, category_value, store_value, stock_value)
             results = session.exec(stmt).all()
+
+    filters = {
+        "category": category_value or "",
+        "store": store_value or "",
+        "stock": stock_value or "",
+    }
 
     return templates.TemplateResponse(
         "search.html",
@@ -297,6 +425,10 @@ def search_page(request: Request, q: str | None = None):
             "request": request,
             "q": query,
             "results": results,
+            "categories": categories,
+            "stores": stores,
+            "filters": filters,
+            "display_config": display_config,
         },
     )
 
@@ -685,6 +817,7 @@ def settings_page(request: Request):
         categories = session.exec(select(Category)).all()
         stores = session.exec(select(Store)).all()
         category_prefixes = session.exec(select(CategoryPrefix)).all()
+        display_preferences = get_display_preferences(session)
     return templates.TemplateResponse(
         "settings.html",
         {
@@ -692,6 +825,7 @@ def settings_page(request: Request):
             "categories": categories,
             "stores": stores,
             "category_prefixes": category_prefixes,
+            "display_preferences": display_preferences,
         },
     )
 
@@ -803,4 +937,18 @@ def category_prefix_delete(map_id: int = Form(...)):
         if mapping:
             session.delete(mapping)
             session.commit()
+    return RedirectResponse("/settings", status_code=HTTP_303_SEE_OTHER)
+
+
+@app.post("/settings/display_fields")
+def update_display_fields(visible_fields: list[str] = Form([])):
+    visible_set = {value.strip() for value in visible_fields if value.strip()}
+
+    with Session(engine) as session:
+        preferences = get_display_preferences(session)
+        for pref in preferences:
+            pref.is_visible = pref.field_name in visible_set
+            session.add(pref)
+        session.commit()
+
     return RedirectResponse("/settings", status_code=HTTP_303_SEE_OTHER)

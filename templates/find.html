@@ -25,7 +25,9 @@
     {% if parts|length == 0 %}
       <p class="text-muted fst-italic">No matching parts.</p>
     {% else %}
-      {% include "_parts_table.html" %}
+      {% with display_config=display_config %}
+        {% include "_parts_table.html" %}
+      {% endwith %}
     {% endif %}
 
   </div>
